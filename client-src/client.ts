@@ -145,9 +145,13 @@ class TavilyCardController {
 
 // ---------------------------------------------------------------------------
 // Card chrome — plain elements styled with the shell's CSS variables.
+// The header follows the official plugin-card pattern: the whole head row is
+// one toggle button (title + description + unsaved badge + rotating chevron)
+// and the body renders only while expanded.
 // ---------------------------------------------------------------------------
 
 const cardStyle: Record<string, string> = {
+  listStyle: 'none',
   display: 'flex',
   flexDirection: 'column',
   gap: '14px',
@@ -156,32 +160,54 @@ const cardStyle: Record<string, string> = {
   border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.25))',
   background: 'var(--dsw-alias-surface-l2, transparent)',
 }
-const cardHeaderStyle: Record<string, string> = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px',
-}
-const cardTitleRowStyle: Record<string, string> = {
+const headerButtonStyle: Record<string, string> = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
+  width: '100%',
+  padding: '2px 4px',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  borderRadius: '8px',
+  textAlign: 'left',
+  fontFamily: 'inherit',
+}
+const headerHoverStyle: Record<string, string> = {
+  background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.08))',
+}
+const headTextStyle: Record<string, string> = {
+  flex: '1 1 auto',
+  minWidth: '0',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
 }
 const cardTitleStyle: Record<string, string> = {
   fontSize: '15px',
   fontWeight: '600',
   color: 'var(--dsw-alias-label-primary, inherit)',
 }
-const toggleButtonStyle: Record<string, string> = {
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--dsw-alias-accent, #3b82f6)',
-  fontSize: '12px',
-  cursor: 'pointer',
-  padding: '2px 4px',
-}
 const cardDescriptionStyle: Record<string, string> = {
   fontSize: '13px',
   color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
+}
+const pendingBadgeStyle: Record<string, string> = {
+  fontSize: '11px',
+  padding: '2px 8px',
+  borderRadius: '999px',
+  background: 'var(--dsw-alias-accent, #3b82f6)',
+  color: 'var(--dsw-alias-label-on-accent, #fff)',
+  flex: 'none',
+}
+const chevronStyle: Record<string, string> = {
+  display: 'flex',
+  flex: 'none',
+  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
+  transition: 'transform .15s ease',
+}
+const chevronOpenStyle: Record<string, string> = {
+  transform: 'rotate(180deg)',
 }
 const rowStyle: Record<string, string> = {
   padding: '4px 0',
@@ -282,7 +308,26 @@ const buttonDisabledStyle: Record<string, string | number> = {
 }
 
 /** The card shell: title, description, fields, and the save/discard footer. */
-/** The card shell: collapsible body, title, description, and footer actions. */
+/** Down chevron, drawn inline (primitives icons are not public exports). */
+function ChevronIcon() {
+  return createElement('svg', {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    'aria-hidden': true,
+  },
+    createElement('path', {
+      d: 'M4 6l4 4 4-4',
+      stroke: 'currentColor',
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }),
+  )
+}
+
+/** The card shell: a whole-row toggle header (official pattern) + collapsible body. */
 function CardShell(props: {
   t: (key: string) => string
   title: string
@@ -294,30 +339,37 @@ function CardShell(props: {
   children: unknown[]
 }) {
   const { t, title, description, state, onApplyRecommended, onSave, onDiscard, children } = props
-  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const saveDisabled = !state.dirty || state.invalid || state.saving || !state.writable
   const discardDisabled = (!state.dirty && !state.failed) || state.saving
-  return createElement('div', { style: cardStyle },
-    createElement('div', { style: cardHeaderStyle },
-      createElement('div', { style: cardTitleRowStyle },
+  return createElement('li', { style: cardStyle },
+    createElement('button', {
+      type: 'button',
+      style: { ...headerButtonStyle, ...(hovered ? headerHoverStyle : {}) },
+      'aria-expanded': open,
+      'aria-label': `${t(open ? 'collapse' : 'expand')}: ${title}`,
+      onMouseEnter: () => { setHovered(true) },
+      onMouseLeave: () => { setHovered(false) },
+      onClick: () => { setOpen(!open) },
+    },
+      createElement('span', { style: headTextStyle },
         createElement('span', { style: cardTitleStyle }, title),
-        createElement('button', {
-          type: 'button',
-          style: toggleButtonStyle,
-          'aria-expanded': expanded,
-          onClick: () => { setExpanded(!expanded) },
-        }, expanded ? t('collapse') : t('expand')),
+        createElement('span', { style: cardDescriptionStyle }, description),
       ),
-      createElement('div', { style: cardDescriptionStyle }, description),
+      state.dirty
+        ? createElement('span', { style: pendingBadgeStyle }, t('unsaved'))
+        : null,
+      createElement('span', { style: { ...chevronStyle, ...(open ? chevronOpenStyle : {}) } },
+        createElement(ChevronIcon, null),
+      ),
     ),
-    expanded ? [
+    open ? [
       ...children,
       createElement('div', { style: footerStyle },
         state.failed
           ? createElement('span', { style: statusStyle }, t('saveFailed'))
-          : state.dirty
-            ? createElement('span', { style: statusStyle }, t('unsaved'))
-            : createElement('span', { style: statusStyle }, ''),
+          : createElement('span', { style: statusStyle }, ''),
         createElement('button', {
           type: 'button',
           style: buttonStyle,
