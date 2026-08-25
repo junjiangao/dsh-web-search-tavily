@@ -12,23 +12,21 @@
  * This bundle runs inside the DSH Web shell: every import resolves through
  * the shell's static module table or the boot graph (`dsh.client.external`),
  * and the bundle itself is a factory-form module the module loader invokes.
+ *
+ * All card chrome is drawn with plain elements and CSS variables: the
+ * official PluginCard/SecretField/ValueField components are private to
+ * dsh-client-ui-settings-plugins and are NOT exported by
+ * dsh-client-ui-primitives (only low-level pieces like Button live there).
  */
 
 import { createElement } from 'react'
-import { Fragment } from 'react/jsx-runtime'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SlotsService } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocaleService } from '@deepseek-ai/dsh-client-locale'
 import type { SettingsScope, SettingsScopeService } from '@deepseek-ai/dsh-client-ui-settings'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import { PluginCard, SecretField, ValueField } from '@deepseek-ai/dsh-client-ui-primitives'
-import type {
-  PluginCardProps,
-  SecretFieldProps,
-  ValueFieldProps,
-} from '@deepseek-ai/dsh-client-ui-primitives'
 import { FormModel, numberSpec, textSpec } from './form.ts'
-import type { FieldSpec } from './form.ts'
+import type { FieldSpec, ShellState } from './form.ts'
 import { en, LOCALE_NS, zh } from './locales.ts'
 
 /** Cordis plugin name used by loader diagnostics (mirrors the host half). */
@@ -67,7 +65,7 @@ const FORM_FIELDS: readonly FieldSpec[] = [
 
 /** Card snapshot projected from the form model. */
 interface TavilyCardState {
-  shell: ReturnType<FormModel['shell']>
+  shell: ShellState
   apiKey: ReturnType<FormModel['secretField']>
   apiKeyEnv: ReturnType<FormModel['textField']>
   baseURL: ReturnType<FormModel['textField']>
@@ -127,6 +125,240 @@ class TavilyCardController {
       ...this.form.actions(),
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Card chrome — plain elements styled with the shell's CSS variables.
+// ---------------------------------------------------------------------------
+
+const cardStyle: Record<string, string> = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
+  padding: '16px',
+  borderRadius: '16px',
+  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.25))',
+  background: 'var(--dsw-alias-surface-l2, transparent)',
+}
+const cardHeaderStyle: Record<string, string> = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+}
+const cardTitleStyle: Record<string, string> = {
+  fontSize: '15px',
+  fontWeight: '600',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+}
+const cardDescriptionStyle: Record<string, string> = {
+  fontSize: '13px',
+  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
+}
+const rowStyle: Record<string, string> = {
+  padding: '4px 0',
+}
+const labelStyle: Record<string, string> = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontSize: '13px',
+  fontWeight: '500',
+  marginBottom: '4px',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+}
+const checkboxLabelStyle: Record<string, string> = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontSize: '13px',
+  fontWeight: '500',
+  cursor: 'pointer',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+}
+const badgeStyle: Record<string, string> = {
+  fontSize: '11px',
+  padding: '1px 6px',
+  borderRadius: '6px',
+  background: 'var(--dsw-alias-fill-l2, rgba(128,128,128,.15))',
+  color: 'var(--dsw-alias-label-secondary, inherit)',
+}
+const hintStyle: Record<string, string> = {
+  fontSize: '12px',
+  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
+  margin: '4px 0 0',
+}
+const inputStyle: Record<string, string> = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '6px 10px',
+  borderRadius: '8px',
+  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))',
+  background: 'var(--dsw-alias-input-fill, transparent)',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+  fontSize: '13px',
+  fontFamily: 'inherit',
+}
+const inputInvalidStyle: Record<string, string> = {
+  ...inputStyle,
+  borderColor: 'var(--dsw-alias-danger, #e5484d)',
+}
+const selectStyle: Record<string, string> = {
+  ...inputStyle,
+  width: '100%',
+}
+const inputErrorStyle: Record<string, string> = {
+  fontSize: '12px',
+  color: 'var(--dsw-alias-danger, #e5484d)',
+  margin: '4px 0 0',
+}
+const resetButtonStyle: Record<string, string> = {
+  border: 'none',
+  background: 'transparent',
+  color: 'var(--dsw-alias-label-secondary, rgba(128,128,128,.8))',
+  fontSize: '12px',
+  cursor: 'pointer',
+  padding: '0 4px',
+  textDecoration: 'underline',
+}
+const footerStyle: Record<string, string> = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  paddingTop: '4px',
+  borderTop: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.15))',
+}
+const statusStyle: Record<string, string> = {
+  fontSize: '12px',
+  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
+  marginRight: 'auto',
+}
+const buttonStyle: Record<string, string> = {
+  padding: '6px 14px',
+  borderRadius: '8px',
+  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))',
+  background: 'var(--dsw-alias-button-elevated-fill, transparent)',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+  fontSize: '13px',
+  cursor: 'pointer',
+}
+const buttonPrimaryStyle: Record<string, string> = {
+  ...buttonStyle,
+  borderColor: 'transparent',
+  background: 'var(--dsw-alias-accent, #3b82f6)',
+  color: 'var(--dsw-alias-label-on-accent, #fff)',
+}
+const buttonDisabledStyle: Record<string, string | number> = {
+  opacity: 0.5,
+  cursor: 'default',
+}
+
+/** The card shell: title, description, fields, and the save/discard footer. */
+function CardShell(props: {
+  t: (key: string) => string
+  title: string
+  description: string
+  state: ShellState
+  onSave: () => void
+  onDiscard: () => void
+  children: unknown[]
+}) {
+  const { t, title, description, state, onSave, onDiscard, children } = props
+  const saveDisabled = !state.dirty || state.invalid || state.saving || !state.writable
+  const discardDisabled = (!state.dirty && !state.failed) || state.saving
+  return createElement('div', { style: cardStyle },
+    createElement('div', { style: cardHeaderStyle },
+      createElement('div', { style: cardTitleStyle }, title),
+      createElement('div', { style: cardDescriptionStyle }, description),
+    ),
+    ...children,
+    createElement('div', { style: footerStyle },
+      state.failed
+        ? createElement('span', { style: statusStyle }, t('saveFailed'))
+        : state.dirty
+          ? createElement('span', { style: statusStyle }, t('unsaved'))
+          : createElement('span', { style: statusStyle }, ''),
+      createElement('button', {
+        type: 'button',
+        style: { ...buttonStyle, ...(discardDisabled ? buttonDisabledStyle : {}) },
+        disabled: discardDisabled,
+        onClick: onDiscard,
+      }, t('discard')),
+      createElement('button', {
+        type: 'button',
+        style: { ...buttonPrimaryStyle, ...(saveDisabled ? buttonDisabledStyle : {}) },
+        disabled: saveDisabled,
+        onClick: onSave,
+      }, state.saving ? t('saving') : t('save')),
+    ),
+  )
+}
+
+/** Text input row (replaces the official ValueField). */
+function TextRow(props: {
+  id: string
+  label: string
+  hint: string
+  numeric: boolean
+  disabled: boolean
+  text: string
+  overridden: boolean
+  invalid: boolean
+  t: (key: string) => string
+  onEdit: (text: string) => void
+  onReset: () => void
+}) {
+  const { id, label, hint, numeric, disabled, text, overridden, invalid, t, onEdit, onReset } = props
+  return createElement('div', { style: rowStyle },
+    createElement('label', { htmlFor: id, style: labelStyle },
+      label,
+      overridden ? createElement('span', { style: badgeStyle }, t('overridden')) : null,
+    ),
+    createElement('input', {
+      id,
+      type: numeric ? 'number' : 'text',
+      disabled,
+      value: text,
+      onChange: (event: { target: { value: string } }) => onEdit(event.target.value),
+      style: invalid ? inputInvalidStyle : inputStyle,
+      'aria-invalid': invalid,
+    }),
+    invalid ? createElement('p', { style: inputErrorStyle }, t('invalidNumber')) : null,
+    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
+    overridden
+      ? createElement('button', { type: 'button', style: resetButtonStyle, onClick: onReset }, t('reset'))
+      : null,
+  )
+}
+
+/** Secret input row (replaces the official SecretField). */
+function SecretRow(props: {
+  id: string
+  label: string
+  hint: string
+  disabled: boolean
+  text: string
+  configured: boolean
+  stateLabel: string
+  onEdit: (text: string) => void
+}) {
+  const { id, label, hint, disabled, text, configured, stateLabel, onEdit } = props
+  return createElement('div', { style: rowStyle },
+    createElement('label', { htmlFor: id, style: labelStyle },
+      label,
+      createElement('span', { style: badgeStyle }, stateLabel),
+    ),
+    createElement('input', {
+      id,
+      type: 'password',
+      disabled,
+      placeholder: configured ? '••••••••' : '',
+      value: text,
+      onChange: (event: { target: { value: string } }) => onEdit(event.target.value),
+      style: inputStyle,
+      autoComplete: 'off',
+    }),
+    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
+  )
 }
 
 /** One row of a select control. */
@@ -194,15 +426,16 @@ function TavilyCard(props: TavilyCardProps) {
   const { t } = props
   const state = props.useTavilyCard((snapshot) => snapshot) as TavilyCardState
   const disabled = !state.shell.writable
-  const pluginCardProps: PluginCardProps = {
+  const shellState = state.shell
+  return createElement(CardShell, {
     t,
-    titleKey: 'title',
-    descriptionKey: 'description',
-    state: state.shell,
+    title: t('title'),
+    description: t('description'),
+    state: shellState,
     onSave: props.save,
     onDiscard: props.discard,
-    children: createElement(Fragment, null,
-      createElement(SecretField, {
+    children: [
+      createElement(SecretRow, {
         id: 'plugin-config-tavily-key',
         label: t('apiKey'),
         hint: t('apiKeyHint'),
@@ -211,44 +444,46 @@ function TavilyCard(props: TavilyCardProps) {
         configured: state.apiKey.configured,
         stateLabel: t(state.apiKey.configured ? 'apiKeySet' : 'apiKeyUnset'),
         onEdit: (text: string) => { props.edit('apiKey', text) },
-      } satisfies SecretFieldProps),
-      createElement(ValueField, {
+      }),
+      createElement(TextRow, {
         id: 'plugin-config-tavily-env',
         label: t('apiKeyEnv'),
         hint: t('apiKeyEnvHint'),
-        overriddenLabel: t('overridden'),
-        resetLabel: t('reset'),
-        invalidLabel: t('invalidNumber'),
+        numeric: false,
         disabled,
-        ...state.apiKeyEnv,
+        text: state.apiKeyEnv.text,
+        overridden: state.apiKeyEnv.overridden,
+        invalid: state.apiKeyEnv.invalid,
+        t,
         onEdit: (text: string) => { props.edit('apiKeyEnv', text) },
         onReset: () => { props.resetField('apiKeyEnv') },
-      } satisfies ValueFieldProps),
-      createElement(ValueField, {
+      }),
+      createElement(TextRow, {
         id: 'plugin-config-tavily-base-url',
         label: t('baseURL'),
         hint: t('baseURLHint'),
-        overriddenLabel: t('overridden'),
-        resetLabel: t('reset'),
-        invalidLabel: t('invalidNumber'),
+        numeric: false,
         disabled,
-        ...state.baseURL,
+        text: state.baseURL.text,
+        overridden: state.baseURL.overridden,
+        invalid: state.baseURL.invalid,
+        t,
         onEdit: (text: string) => { props.edit('baseURL', text) },
         onReset: () => { props.resetField('baseURL') },
-      } satisfies ValueFieldProps),
-      createElement(ValueField, {
+      }),
+      createElement(TextRow, {
         id: 'plugin-config-tavily-max-results',
         label: t('maxResults'),
         hint: t('maxResultsHint'),
-        overriddenLabel: t('overridden'),
-        resetLabel: t('reset'),
-        invalidLabel: t('invalidNumber'),
         numeric: true,
         disabled,
-        ...state.maxResults,
+        text: state.maxResults.text,
+        overridden: state.maxResults.overridden,
+        invalid: state.maxResults.invalid,
+        t,
         onEdit: (text: string) => { props.edit('maxResults', text) },
         onReset: () => { props.resetField('maxResults') },
-      } satisfies ValueFieldProps),
+      }),
       createElement(SelectRow, {
         id: 'plugin-config-tavily-depth',
         label: t('searchDepth'),
@@ -262,8 +497,8 @@ function TavilyCard(props: TavilyCardProps) {
       }),
       createElement(SelectRow, {
         id: 'plugin-config-tavily-topic',
-        label: 'Topic',
-        hint: 'Filter results to a topic.',
+        label: t('topic'),
+        hint: t('topicHint'),
         disabled,
         value: state.topic.value,
         options: state.topic.options,
@@ -321,50 +556,8 @@ function TavilyCard(props: TavilyCardProps) {
         t,
         onChange: (checked: boolean) => { props.toggle('includeUsage', checked, false) },
       }),
-    ),
-  }
-  return createElement(PluginCard, pluginCardProps)
-}
-
-const rowStyle: Record<string, string> = {
-  padding: '4px 0',
-}
-const labelStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  fontSize: '13px',
-  fontWeight: '500',
-  marginBottom: '4px',
-}
-const checkboxLabelStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  fontSize: '13px',
-  fontWeight: '500',
-  cursor: 'pointer',
-}
-const badgeStyle: Record<string, string> = {
-  fontSize: '11px',
-  padding: '1px 6px',
-  borderRadius: '6px',
-  background: 'var(--dsw-alias-fill-l2, rgba(128,128,128,.15))',
-  color: 'var(--dsw-alias-label-secondary, inherit)',
-}
-const hintStyle: Record<string, string> = {
-  fontSize: '12px',
-  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
-  margin: '2px 0 0',
-}
-const selectStyle: Record<string, string> = {
-  width: '100%',
-  padding: '6px 8px',
-  borderRadius: '8px',
-  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))',
-  background: 'var(--dsw-alias-input-fill, transparent)',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-  fontSize: '13px',
+    ],
+  })
 }
 
 /** Register the locale dictionaries and the plugin card. */
