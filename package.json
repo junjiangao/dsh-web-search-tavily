@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, settings section, and credentials support",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/junjiangao/dsh-web-search-tavily.git"
+  },
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
