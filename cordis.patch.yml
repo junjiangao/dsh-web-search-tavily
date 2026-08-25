@@ -1,0 +1,19 @@
+# `@deepseek-ai/dsh-web-search-tavily` bundle patch: registers the Tavily search provider.
+#
+# This bundle only inserts its own plugin row. Selecting tavily as the active
+# search provider stays a user-owned `web` seam decision: a patch row replaces
+# the whole row config instead of deep-merging, and multiple provider bundles
+# must not fight over the `web` row. With several search providers installed,
+# pin tavily in the profile's cordis.patch.yml:
+#
+#   - id: web
+#     config:
+#       searchProvider: tavily   # restate every other key the web row carries
+#
+# The base `web` row currently carries only `searchProvider` (deepseek-official);
+# because config wins over the environment, exporting DSH_WEB_SEARCH_PROVIDER
+# alone has no effect until the row drops that key.
+
+- insert:
+    - id: web-search-tavily
+      name: '@deepseek-ai/dsh-web-search-tavily'
