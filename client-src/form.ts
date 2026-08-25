@@ -40,13 +40,28 @@ export interface BooleanSpec {
   field: string
 }
 
-/** A write-only control backed by a section field (secret role). */
-export interface SecretSpec {
-  kind: 'secret'
+/**
+ * A write-only credential control backed by the credentials domain, exactly
+ * as the official web-search cards stage their key: the section never carries
+ * the literal, the control reports whether the referenced credential resolves
+ * (environment variable, credential store, …), and a staged value is written
+ * through the domain rather than into the settings document.
+ */
+export interface CredentialSpec {
+  kind: 'credential'
+  /** Pseudo-field staged in the form; never a section field. */
   field: string
 }
 
-export type FieldSpec = TextSpec | SelectSpec | BooleanSpec | SecretSpec
+export type FieldSpec = TextSpec | SelectSpec | BooleanSpec | CredentialSpec
+
+/** External credentials-domain hooks powering the credential control. */
+export interface CredentialHooks {
+  /** Whether the referenced credential resolves (env var, store, literal). */
+  configured(): boolean
+  /** Write the staged value through the credentials domain; resolves to acceptance. */
+  write(value: string): Promise<boolean>
+}
 
 /** Snapshot of one control as the card renders it. */
 export interface FieldView {
@@ -111,14 +126,16 @@ interface PlanItem {
 export class FormModel {
   private readonly scope: SettingsScope
   private readonly specs: ReadonlyMap<string, FieldSpec>
+  private readonly credential: CredentialHooks | undefined
   private readonly staged = new Map<string, Staged>()
   private readonly listeners = new Set<() => void>()
   private saving = false
   private failed = false
 
-  constructor(scope: SettingsScope, specs: readonly FieldSpec[]) {
+  constructor(scope: SettingsScope, specs: readonly FieldSpec[], credential?: CredentialHooks) {
     this.scope = scope
     this.specs = new Map(specs.map((spec) => [spec.field, spec]))
+    this.credential = credential
     scope.subscribe(() => this.publish())
   }
 
@@ -167,16 +184,17 @@ export class FormModel {
     }
   }
 
-  /** Secret control state for SecretField rendering. */
+  /** Credential control state for the secret field rendering. */
   secretField(field: string): { text: string; configured: boolean } {
+    const spec = this.specOf(field)
+    if (spec.kind !== 'credential') throw new Error('web-search-tavily: ' + field + ' is not a credential field')
+    const configured = this.credential?.configured() ?? false
     const staged = this.staged.get(field)
-    const value = this.sectionValue(field)
-    const configured = typeof value === 'string' && value.length > 0
     if (staged === undefined || staged.kind === 'clear') {
       return { text: EMPTY_TEXT, configured }
     }
     const text = typeof staged.value === 'string' ? staged.value : EMPTY_TEXT
-    return { text, configured: text.length > 0 }
+    return { text, configured: configured || text.length > 0 }
   }
 
   /** Select control state: the effective option, or undefined when unset. */
@@ -255,11 +273,13 @@ export class FormModel {
     const plan: PlanItem[] = []
     for (const [field, staged] of this.staged) {
       const spec = this.specOf(field)
-      if (spec.kind === 'secret') {
-        const value = staged.kind === 'set' && typeof staged.value === 'string'
-          ? staged.value.trim()
-          : EMPTY_TEXT
-        if (value !== '') plan.push({ field, write: () => this.store(field, value) })
+      if (spec.kind === 'credential') {
+        // A write-only credential control: only a non-empty staged value
+        // writes, through the credentials domain, never into the section.
+        if (staged.kind === 'set' && typeof staged.value === 'string' && staged.value.trim() !== '') {
+          const value = staged.value.trim()
+          plan.push({ field, write: () => this.credential?.write(value) ?? Promise.resolve(false) })
+        }
         continue
       }
       if (spec.kind === 'select' || spec.kind === 'boolean') {

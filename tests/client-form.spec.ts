@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { FormModel, numberSpec, textSpec } from '../client-src/form.ts'
-import type { FieldSpec } from '../client-src/form.ts'
+import type { CredentialHooks, FieldSpec } from '../client-src/form.ts'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings'
 
 /** In-memory settings scope doubling the host-backed one. */
@@ -43,15 +43,15 @@ class FakeScope implements SettingsScope {
 }
 
 const SPECS: readonly FieldSpec[] = [
-  { kind: 'secret', field: 'apiKey' },
+  { kind: 'credential', field: 'apiKey' },
   textSpec('baseURL'),
   numberSpec('maxResults'),
   { kind: 'select', field: 'searchDepth' },
   { kind: 'boolean', field: 'includeImages' },
 ]
 
-function model(scope = new FakeScope()) {
-  return new FormModel(scope, SPECS)
+function model(scope = new FakeScope(), credential?: CredentialHooks) {
+  return new FormModel(scope, SPECS, credential)
 }
 
 describe('FormModel shell state', () => {
@@ -109,9 +109,17 @@ describe('FormModel field projections', () => {
     expect(form.booleanField('includeImages')).toEqual({ checked: true, overridden: false })
   })
 
-  it('projects secrets with configured state', () => {
-    const form = model(new FakeScope({ apiKey: 'sk-123' }))
-    expect(form.secretField('apiKey')).toEqual({ text: '', configured: true })
+  it('projects credentials with the domain-configured state', () => {
+    const configured = model(new FakeScope(), { configured: () => true, write: async () => true })
+    expect(configured.secretField('apiKey')).toEqual({ text: '', configured: true })
+    const unconfigured = model(new FakeScope(), { configured: () => false, write: async () => true })
+    expect(unconfigured.secretField('apiKey')).toEqual({ text: '', configured: false })
+  })
+
+  it('treats a staged key draft as configured until saved', () => {
+    const form = model(new FakeScope(), { configured: () => false, write: async () => true })
+    form.actions().edit('apiKey', 'sk-456')
+    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true })
   })
 })
 
@@ -188,13 +196,36 @@ describe('FormModel save planning', () => {
     expect(form.shell().dirty).toBe(false)
   })
 
-  it('writes staged secrets into the section', async () => {
+  it('writes staged keys through the credential hook, never the section', async () => {
     const scope = new FakeScope()
-    const form = model(scope)
+    const write = vi.fn(async () => true)
+    const form = model(scope, { configured: () => false, write })
     form.actions().edit('apiKey', 'sk-456')
     form.actions().save()
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(scope.snapshot.user).toEqual({ apiKey: 'sk-456' })
+    expect(write).toHaveBeenCalledWith('sk-456')
+    expect(scope.snapshot.user).toBeNull()
+    expect(form.shell().dirty).toBe(false)
+  })
+
+  it('ignores a blank key draft', async () => {
+    const write = vi.fn(async () => true)
+    const form = model(new FakeScope(), { configured: () => false, write })
+    form.actions().edit('apiKey', '   ')
+    expect(form.shell().dirty).toBe(false)
+    form.actions().save()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('keeps a staged key when the credential write fails', async () => {
+    const form = model(new FakeScope(), { configured: () => false, write: async () => false })
+    form.actions().edit('apiKey', 'sk-456')
+    form.actions().save()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(form.shell().failed).toBe(true)
+    expect(form.shell().dirty).toBe(true)
+    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true })
   })
 
   it('keeps drafts when a write fails', async () => {

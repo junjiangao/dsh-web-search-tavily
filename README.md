@@ -108,13 +108,13 @@ When every key source is empty, requests carry no `Authorization`, send `x-tavil
 
 ### Client settings card
 
-The package also ships a client face (`dsh.client` declaration + `exports["./client"]`, built as `lib/client.js`): it registers a `web-search-tavily` card into the settings page's "Plugins → Plugin configuration" tab covering the common fields (API key, key env var, endpoint, result count, search depth, topic, and the answer/images/raw content/favicon/usage toggles). The card binds the same settings namespace, so saving writes straight into the settings document. Restart the web service after install so the client-modules graph picks the package up (it scans loader entries at startup).
+The package also ships a client face (`dsh.client` declaration + `exports["./client"]`, built as `lib/client.js`): it registers a `web-search-tavily` card into the settings page's "Plugins → Plugin configuration" tab covering the common fields (API key, key env var, endpoint, result count, search depth, topic, and the answer/images/raw content/favicon/usage toggles). The card binds the same settings namespace; other fields save straight into the settings document, while **the API key goes through the credentials domain** (`connection.api.credentials`) and never lands in the settings file. Restart the web service after install so the client-modules graph picks the package up (it scans loader entries at startup).
 
 Card features:
 
 - **Collapsible**: closed by default; the whole header row (title + description + chevron) toggles it, matching the official plugin-card interaction, with an unsaved badge while drafts exist.
 - **Recommended configuration**: the "Apply recommended settings" button stages the **Tavily official defaults** (`searchDepth: basic`, `maxResults: 5`, `includeAnswer/includeImages/includeRawContent/includeFavicon/includeUsage: false`) — deliberately not aggressive values, because **keyless mode (no key) rate-limits and may ignore or downgrade result count, depth, and answer parameters**; official defaults behave identically with and without a key. Staged only; review then save.
-- **Keyless notice**: when no API key is configured in settings, a notice bar explains the rate limiting and parameter downgrade.
+- **Auto-detected key state**: like the official `web-search-deepseek` card, the card asks the credentials domain via `credentials.describe` — an exported `TAVILY_API_KEY`, a credential-store record, or a stored literal all report as "configured" with **no manual setup**. Only when every source is empty does the keyless notice appear (rate limiting and parameter downgrade).
 - **Field hints**: every field carries a hint that flags token impact (`includeRawContent` significantly raises tokens/cost, `includeAnswer` adds output tokens, `maxResults` scales with count, `searchDepth: advanced` is slower and costlier).
 
 ## Mapping

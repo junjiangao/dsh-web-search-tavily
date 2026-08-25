@@ -36,21 +36,55 @@ export const name = 'web-search-tavily'
 export const SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /** Services the client face needs from the shell. */
-export const inject = ['slots', 'locale', 'settingsScope']
+export const inject = ['slots', 'locale', 'settingsScope', 'connection', 'remote']
 
 /** The settings namespace this card binds. */
 interface ClientContext extends Context {
   slots: SlotsService
   locale: LocaleService
   settingsScope: SettingsScopeService
+  connection: ConnectionService
+  remote: RemoteService
 }
+
+/**
+ * Minimal wire face of the host credentials domain, mirroring what the
+ * official settings cards consume (`connection.api.credentials`): `describe`
+ * reports whether a reference resolves (environment variable, credential
+ * store, ...) without ever returning its value, and `set` writes a new value.
+ */
+export interface CredentialView {
+  configured: boolean
+  writable: boolean
+  source?: string
+}
+export interface CredentialsApi {
+  describe(request: { refs: string[] }): Promise<{
+    result: { ok: boolean; value: { credentials: Record<string, CredentialView> } }
+  }>
+  set(request: { ref: string; value: string }): Promise<{
+    result: { ok: boolean; value: Record<string, never> }
+  }>
+}
+export interface ConnectionService { api: { credentials: CredentialsApi } }
+export interface RemoteService {
+  $on(event: string, listener: (payload: string) => void): () => void
+}
+
+/** Credential reference the provider resolves when the section names none. */
+export const DEFAULT_API_KEY_REF = 'TAVILY_API_KEY'
 
 const SEARCH_DEPTHS = ['ultra-fast', 'fast', 'basic', 'advanced'] as const
 const TOPICS = ['general', 'news', 'finance'] as const
 
-/** Staged form fields, in card display order. */
+/**
+ * Staged form fields, in card display order. The key is a credential
+ * control: its literal never rides the settings section, the card reports
+ * whether the referenced credential resolves (env var, credential store),
+ * and a staged value writes through the credentials domain.
+ */
 const FORM_FIELDS: readonly FieldSpec[] = [
-  { kind: 'secret', field: 'apiKey' },
+  { kind: 'credential', field: 'apiKey' },
   textSpec('apiKeyEnv'),
   textSpec('baseURL'),
   numberSpec('maxResults'),
@@ -111,14 +145,30 @@ const RECOMMENDED_CONFIG: Record<string, unknown> = {
   includeUsage: false,
 }
 
-/** Controller: binds the namespace scope, owns the form, feeds the card. */
+/**
+ * Controller: binds the namespace scope, owns the form, and watches the
+ * credential the section references — exactly as the official web-search
+ * card does. The key state comes from `credentials.describe`, so an exported
+ * `TAVILY_API_KEY` (or a credential-store record) reports as configured with
+ * no manual setup; a staged key is written through the credentials domain.
+ */
 class TavilyCardController {
+  private readonly scope: SettingsScope
+  private readonly api: { credentials: CredentialsApi }
   private readonly form: FormModel
   private readonly store: SnapshotStore<TavilyCardState>
+  private credential = { ref: '', configured: false, writable: true }
 
-  constructor(scope: SettingsScope) {
-    this.form = new FormModel(scope, FORM_FIELDS)
+  constructor(scope: SettingsScope, api: { credentials: CredentialsApi }) {
+    this.scope = scope
+    this.api = api
+    this.form = new FormModel(scope, FORM_FIELDS, {
+      configured: () => this.credentialConfigured(),
+      write: (value) => this.writeKey(value),
+    })
     this.store = this.form.bind(() => this.projection())
+    scope.subscribe(() => { void this.readCredential() })
+    void this.readCredential()
   }
 
   private projection(): TavilyCardState {
@@ -136,6 +186,79 @@ class TavilyCardController {
       includeFavicon: this.form.booleanField('includeFavicon'),
       includeUsage: this.form.booleanField('includeUsage'),
     }
+  }
+
+  /** The credential reference the section currently names, or the provider default. */
+  private credentialRef(): string {
+    const declared = this.scope.getSnapshot().value?.apiKeyEnv
+    return typeof declared === 'string' && declared.length > 0 ? declared : DEFAULT_API_KEY_REF
+  }
+
+  /**
+   * The section's own literal key still counts as configured (the provider
+   * honors a literal first), as does a resolved credential behind the
+   * reference the section names.
+   */
+  private credentialConfigured(): boolean {
+    const literal = this.scope.getSnapshot().value?.apiKey
+    return this.credential.configured || (typeof literal === 'string' && literal.length > 0)
+  }
+
+  /**
+   * Ask the credentials domain about the reference the section currently
+   * names. The answer is stored with the reference it describes: `apiKeyEnv`
+   * can change between the request and its response, so a response is
+   * published only while it still answers for the reference in force.
+   */
+  private async readCredential(): Promise<void> {
+    const ref = this.credentialRef()
+    if (ref !== this.credential.ref) {
+      this.credential = { ref, configured: false, writable: true }
+      this.store.set(this.projection())
+    }
+    let response
+    try {
+      response = await this.api.credentials.describe({ refs: [ref] })
+    } catch {
+      return
+    }
+    if (!response.result.ok || ref !== this.credentialRef()) return
+    const view = response.result.value.credentials[ref]
+    const next = {
+      ref,
+      configured: view?.configured ?? false,
+      writable: view?.writable ?? true,
+    }
+    if (next.configured === this.credential.configured && next.writable === this.credential.writable) return
+    this.credential = next
+    this.store.set(this.projection())
+  }
+
+  /**
+   * Re-read after the host reports a change to the reference this card
+   * watches — a key written elsewhere (the Models page addresses the same
+   * reference) does not move the settings section, so without this the badge
+   * would keep reporting a state the host already replaced.
+   */
+  refreshCredential(ref: string): void {
+    if (ref !== this.credential.ref) return
+    void this.readCredential()
+  }
+
+  /**
+   * Write the staged key through the credentials domain, then re-read
+   * whether the host now holds one. The literal never enters the settings
+   * document.
+   */
+  private async writeKey(value: string): Promise<boolean> {
+    try {
+      const response = await this.api.credentials.set({ ref: this.credentialRef(), value })
+      if (!response.result.ok) return false
+    } catch {
+      return false
+    }
+    await this.readCredential()
+    return this.credentialConfigured()
   }
 
   /** The face the card's slot registration injects. */
@@ -679,7 +802,13 @@ function TavilyCard(props: TavilyCardProps) {
 /** Register the locale dictionaries and the plugin card. */
 export function apply(ctx: ClientContext): void {
   ctx.locale.register(LOCALE_NS, { zh, en })
-  const controller = new TavilyCardController(ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }))
+  const controller = new TavilyCardController(
+    ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
+    ctx.connection.api,
+  )
+  ctx.effect(() => ctx.remote.$on('credentials/reference-updated', (ref) => {
+    controller.refreshCredential(ref)
+  }), 'web-search-tavily: credential invalidation')
   ctx.slots.inject('settings.plugin.item', function* () {
     yield ctx.slots.register({
       name: 'settings.plugin.item',
