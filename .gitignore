@@ -5,3 +5,8 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+
+# local build tooling (sandboxed environments cannot use the pnpm store)
+.vendor/
+# ad-hoc inspection artifacts
+.investigate/

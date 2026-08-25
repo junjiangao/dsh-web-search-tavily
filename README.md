@@ -106,6 +106,10 @@ When every key source is empty, requests carry no `Authorization`, send `x-tavil
 
 `WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = settingsNamespace('web-search-tavily')` installs the configuration as a settings section, so the web settings page can edit every field above and changes apply to the next search without re-registration. The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in settings is supported but persists in the settings document — prefer credentials or the environment.
 
+### Client settings card
+
+The package also ships a client face (`dsh.client` declaration + `exports["./client"]`, built as `lib/client.js`): it registers a `web-search-tavily` card into the settings page's "Plugins → Plugin configuration" tab covering the common fields (API key, key env var, endpoint, result count, search depth, topic, and the answer/images/raw content/favicon/usage toggles). The card binds the same settings namespace, so saving writes straight into the settings document. Restart the web service after install so the client-modules graph picks the package up (it scans loader entries at startup).
+
 ## Mapping
 
 - `answer` (when `includeAnswer` is enabled) → `content`.

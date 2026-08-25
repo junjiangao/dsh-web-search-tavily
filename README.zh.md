@@ -106,6 +106,10 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 `WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = settingsNamespace('web-search-tavily')` 把配置注册为设置段：web 设置页可编辑上表全部字段，修改后下一次搜索即生效，无需重注册。推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。设置文档中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
+### 客户端设置卡片
+
+包内还携带一个 client 面（`dsh.client` 声明 + `exports["./client"]`，构建产物 `lib/client.js`）：向 web 设置页的"插件 → 插件配置"页注册 `web-search-tavily` 卡片，可编辑常用字段（API key、key 环境变量、接口地址、结果数量、检索深度、topic、answer/images/raw content/favicon/usage 开关）。卡片绑定同一个 settings namespace，保存即写入设置文档。安装后需重启 web 服务让 client 模块图收录该包（client-modules 启动时扫描 loader 条目）。
+
 ## 映射
 
 - `answer`（启用 `includeAnswer` 时）→ `content`。

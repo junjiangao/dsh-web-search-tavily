@@ -1,6 +1,16 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The client bundle's runtime import only exists inside the DSH Web
+      // shell; tests resolve it to a local stub with the same surface.
+      '@deepseek-ai/dsh-client-runtime/client': fileURLToPath(
+        new URL('./tests/stubs/runtime-client.ts', import.meta.url),
+      ),
+    },
+  },
   test: {
     include: ['tests/**/*.spec.ts'],
     // One worker, sequential files: v8 coverage merges across parallel
