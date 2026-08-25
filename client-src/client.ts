@@ -19,7 +19,7 @@
  * dsh-client-ui-primitives (only low-level pieces like Button live there).
  */
 
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SlotsService } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocaleService } from '@deepseek-ai/dsh-client-locale'
@@ -87,8 +87,24 @@ interface TavilyCardProps {
   choose: (field: string, value: unknown, clear: boolean) => void
   toggle: (field: string, checked: boolean, defaultValue: unknown) => void
   resetField: (field: string) => void
+  applyRecommended: (values: Record<string, unknown>) => void
   save: () => void
   discard: () => void
+}
+
+/**
+ * Recommended configuration for routine use: deeper retrieval, a balanced
+ * result count, an answer over the hits, raw content for the agent, and
+ * favicons for the UI. Applied as staged edits — the user reviews the diff
+ * and commits with Save.
+ */
+const RECOMMENDED_CONFIG: Record<string, unknown> = {
+  searchDepth: 'advanced',
+  maxResults: 8,
+  includeAnswer: true,
+  includeRawContent: true,
+  includeFavicon: true,
+  includeUsage: false,
 }
 
 /** Controller: binds the namespace scope, owns the form, feeds the card. */
@@ -145,10 +161,23 @@ const cardHeaderStyle: Record<string, string> = {
   flexDirection: 'column',
   gap: '2px',
 }
+const cardTitleRowStyle: Record<string, string> = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+}
 const cardTitleStyle: Record<string, string> = {
   fontSize: '15px',
   fontWeight: '600',
   color: 'var(--dsw-alias-label-primary, inherit)',
+}
+const toggleButtonStyle: Record<string, string> = {
+  border: 'none',
+  background: 'transparent',
+  color: 'var(--dsw-alias-accent, #3b82f6)',
+  fontSize: '12px',
+  cursor: 'pointer',
+  padding: '2px 4px',
 }
 const cardDescriptionStyle: Record<string, string> = {
   fontSize: '13px',
@@ -253,43 +282,61 @@ const buttonDisabledStyle: Record<string, string | number> = {
 }
 
 /** The card shell: title, description, fields, and the save/discard footer. */
+/** The card shell: collapsible body, title, description, and footer actions. */
 function CardShell(props: {
   t: (key: string) => string
   title: string
   description: string
   state: ShellState
+  onApplyRecommended: () => void
   onSave: () => void
   onDiscard: () => void
   children: unknown[]
 }) {
-  const { t, title, description, state, onSave, onDiscard, children } = props
+  const { t, title, description, state, onApplyRecommended, onSave, onDiscard, children } = props
+  const [expanded, setExpanded] = useState(false)
   const saveDisabled = !state.dirty || state.invalid || state.saving || !state.writable
   const discardDisabled = (!state.dirty && !state.failed) || state.saving
   return createElement('div', { style: cardStyle },
     createElement('div', { style: cardHeaderStyle },
-      createElement('div', { style: cardTitleStyle }, title),
+      createElement('div', { style: cardTitleRowStyle },
+        createElement('span', { style: cardTitleStyle }, title),
+        createElement('button', {
+          type: 'button',
+          style: toggleButtonStyle,
+          'aria-expanded': expanded,
+          onClick: () => { setExpanded(!expanded) },
+        }, expanded ? t('collapse') : t('expand')),
+      ),
       createElement('div', { style: cardDescriptionStyle }, description),
     ),
-    ...children,
-    createElement('div', { style: footerStyle },
-      state.failed
-        ? createElement('span', { style: statusStyle }, t('saveFailed'))
-        : state.dirty
-          ? createElement('span', { style: statusStyle }, t('unsaved'))
-          : createElement('span', { style: statusStyle }, ''),
-      createElement('button', {
-        type: 'button',
-        style: { ...buttonStyle, ...(discardDisabled ? buttonDisabledStyle : {}) },
-        disabled: discardDisabled,
-        onClick: onDiscard,
-      }, t('discard')),
-      createElement('button', {
-        type: 'button',
-        style: { ...buttonPrimaryStyle, ...(saveDisabled ? buttonDisabledStyle : {}) },
-        disabled: saveDisabled,
-        onClick: onSave,
-      }, state.saving ? t('saving') : t('save')),
-    ),
+    expanded ? [
+      ...children,
+      createElement('div', { style: footerStyle },
+        state.failed
+          ? createElement('span', { style: statusStyle }, t('saveFailed'))
+          : state.dirty
+            ? createElement('span', { style: statusStyle }, t('unsaved'))
+            : createElement('span', { style: statusStyle }, ''),
+        createElement('button', {
+          type: 'button',
+          style: buttonStyle,
+          onClick: onApplyRecommended,
+        }, t('recommend')),
+        createElement('button', {
+          type: 'button',
+          style: { ...buttonStyle, ...(discardDisabled ? buttonDisabledStyle : {}) },
+          disabled: discardDisabled,
+          onClick: onDiscard,
+        }, t('discard')),
+        createElement('button', {
+          type: 'button',
+          style: { ...buttonPrimaryStyle, ...(saveDisabled ? buttonDisabledStyle : {}) },
+          disabled: saveDisabled,
+          onClick: onSave,
+        }, state.saving ? t('saving') : t('save')),
+      ),
+    ] : null,
   )
 }
 
@@ -432,6 +479,7 @@ function TavilyCard(props: TavilyCardProps) {
     title: t('title'),
     description: t('description'),
     state: shellState,
+    onApplyRecommended: () => { props.applyRecommended(RECOMMENDED_CONFIG) },
     onSave: props.save,
     onDiscard: props.discard,
     children: [

@@ -62,12 +62,17 @@ type Staged =
 
 const EMPTY_TEXT = ''
 
+/** Render any section or staged value for display; undefined/null read as blank. */
+function displayOf(value: unknown): string {
+  return value === undefined || value === null ? EMPTY_TEXT : String(value)
+}
+
 /** Whole-number conversion: an empty draft clears; anything else must be finite. */
 export function numberSpec(field: string): TextSpec {
   return {
     kind: 'text',
     field,
-    format: (value) => typeof value === 'number' ? String(value) : EMPTY_TEXT,
+    format: displayOf,
     parse: (text) => {
       const trimmed = text.trim()
       if (trimmed === '') return { clear: true }
@@ -82,7 +87,7 @@ export function textSpec(field: string): TextSpec {
   return {
     kind: 'text',
     field,
-    format: (value) => typeof value === 'string' ? value : EMPTY_TEXT,
+    format: displayOf,
     parse: (text) => text.trim() === '' ? { clear: true } : { set: text },
   }
 }
@@ -151,7 +156,9 @@ export class FormModel {
       }
     }
     if (staged.kind === 'clear') return { text: EMPTY_TEXT, overridden: true, invalid: false }
-    const text = typeof staged.value === 'string' ? staged.value : EMPTY_TEXT
+    // staged values may be raw (recommended batch) or text (typed edits);
+    // formatting through the spec renders both identically
+    const text = staged.value === undefined ? EMPTY_TEXT : spec.format(staged.value)
     const write = spec.parse(text)
     return {
       text,
@@ -201,6 +208,16 @@ export class FormModel {
         this.stage(field, checked === defaultValue ? { kind: 'clear' } : { kind: 'set', value: checked })
       },
       resetField: (field: string) => { this.stage(field, { kind: 'clear' }) },
+      /**
+       * Stage a batch of recommended values at once. Every value lands in the
+       * staged map (the save plan skips ones identical to the section value),
+       * so the user sees the full diff before committing.
+       */
+      applyRecommended: (values: Record<string, unknown>) => {
+        for (const [field, value] of Object.entries(values)) {
+          this.stage(field, { kind: 'set', value })
+        }
+      },
       save: () => { void this.save() },
       discard: () => {
         if (this.staged.size === 0 && !this.failed) return
@@ -258,7 +275,7 @@ export class FormModel {
         if (this.stored(field)) plan.push({ field, write: () => this.clear(field) })
         continue
       }
-      const text = typeof staged.value === 'string' ? staged.value : EMPTY_TEXT
+      const text = staged.value === undefined ? EMPTY_TEXT : spec.format(staged.value)
       if (text === spec.format(this.sectionValue(field))) continue
       const write = spec.parse(text)
       if (write === undefined) {

@@ -153,6 +153,41 @@ describe('FormModel save planning', () => {
     expect(scope.snapshot.user).toEqual({})
   })
 
+  it('stages a recommended batch as one reviewable diff', async () => {
+    const scope = new FakeScope()
+    const form = model(scope)
+    const actions = form.actions()
+    actions.applyRecommended({
+      searchDepth: 'advanced',
+      maxResults: 8,
+      includeImages: true,
+    })
+    expect(form.shell().dirty).toBe(true)
+    expect(form.selectField('searchDepth')).toEqual({ value: 'advanced', overridden: true })
+    expect(form.textField('maxResults')).toEqual({ text: '8', overridden: true, invalid: false })
+    expect(form.booleanField('includeImages')).toEqual({ checked: true, overridden: true })
+    actions.save()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(scope.snapshot.user).toEqual({
+      searchDepth: 'advanced',
+      maxResults: 8,
+      includeImages: true,
+    })
+    expect(form.shell().dirty).toBe(false)
+  })
+
+  it('recommended values equal to the section value are skipped on save', async () => {
+    const scope = new FakeScope({ searchDepth: 'advanced' })
+    const form = model(scope)
+    form.actions().applyRecommended({ searchDepth: 'advanced', maxResults: 5 })
+    expect(form.shell().dirty).toBe(true)
+    form.actions().save()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // searchDepth matched the section value and produced no write; maxResults landed
+    expect(scope.snapshot.user).toEqual({ maxResults: 5 })
+    expect(form.shell().dirty).toBe(false)
+  })
+
   it('writes staged secrets into the section', async () => {
     const scope = new FakeScope()
     const form = model(scope)

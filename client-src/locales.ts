@@ -15,6 +15,10 @@ export const LOCALE_NS = 'web-search-tavily'
 export const zh: Record<string, string> = {
   title: 'Tavily 搜索',
   description: 'Tavily 搜索提供商（keyless 模式或 API 密钥）。',
+  expand: '显示设置',
+  collapse: '隐藏设置',
+  recommend: '使用推荐配置',
+  recommendHint: '填入推荐的常用配置（检索深度 advanced、结果数 8、生成回答、包含原文与图标），确认后保存。',
   apiKey: 'API 密钥',
   apiKeyHint: '留空则使用 TAVILY_API_KEY 环境变量或密钥库中的凭据。',
   apiKeySet: '已配置密钥。',
@@ -54,6 +58,10 @@ export const zh: Record<string, string> = {
 export const en: Record<string, string> = {
   title: 'Tavily Search',
   description: 'The Tavily search provider (keyless mode or API key).',
+  expand: 'Show settings',
+  collapse: 'Hide settings',
+  recommend: 'Apply recommended settings',
+  recommendHint: 'Stages the recommended routine configuration (search depth advanced, 8 results, generated answer, raw content and favicons); review and save.',
   apiKey: 'API key',
   apiKeyHint: 'Leave blank to use the TAVILY_API_KEY environment variable or credential store.',
   apiKeySet: 'A key is configured.',
