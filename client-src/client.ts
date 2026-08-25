@@ -93,17 +93,21 @@ interface TavilyCardProps {
 }
 
 /**
- * Recommended configuration for routine use: deeper retrieval, a balanced
- * result count, an answer over the hits, raw content for the agent, and
- * favicons for the UI. Applied as staged edits — the user reviews the diff
- * and commits with Save.
+ * Recommended configuration: the Tavily official defaults, restated
+ * explicitly. Chosen deliberately over "aggressive" values because keyless
+ * mode (no API key) rate-limits requests and may ignore or downgrade result
+ * count, depth, and answer parameters — official defaults behave under both
+ * keyed and keyless operation. Applied as staged edits; the user reviews the
+ * diff and commits with Save.
  */
 const RECOMMENDED_CONFIG: Record<string, unknown> = {
-  searchDepth: 'advanced',
-  maxResults: 8,
-  includeAnswer: true,
-  includeRawContent: true,
-  includeFavicon: true,
+  apiKeyEnv: 'TAVILY_API_KEY',
+  searchDepth: 'basic',
+  maxResults: 5,
+  includeAnswer: false,
+  includeImages: false,
+  includeRawContent: false,
+  includeFavicon: false,
   includeUsage: false,
 }
 
@@ -286,6 +290,15 @@ const statusStyle: Record<string, string> = {
   fontSize: '12px',
   color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
   marginRight: 'auto',
+}
+const noticeStyle: Record<string, string> = {
+  fontSize: '12px',
+  lineHeight: '1.5',
+  padding: '8px 10px',
+  borderRadius: '8px',
+  border: '1px solid var(--dsw-alias-warning-border, rgba(217,119,6,.4))',
+  background: 'var(--dsw-alias-warning-fill, rgba(217,119,6,.1))',
+  color: 'var(--dsw-alias-label-secondary, inherit)',
 }
 const buttonStyle: Record<string, string> = {
   padding: '6px 14px',
@@ -535,6 +548,9 @@ function TavilyCard(props: TavilyCardProps) {
     onSave: props.save,
     onDiscard: props.discard,
     children: [
+      state.apiKey.configured
+        ? null
+        : createElement('div', { style: noticeStyle, role: 'status' }, t('keylessNotice')),
       createElement(SecretRow, {
         id: 'plugin-config-tavily-key',
         label: t('apiKey'),
