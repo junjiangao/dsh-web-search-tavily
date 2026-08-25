@@ -30,7 +30,7 @@ pnpm pack
 dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 ```
 
-A git install fetches sources, so the package ships a `prepare` script that builds `lib/` from source. pnpm ≥ 10 refuses to run a git dependency's `prepare` until it is explicitly allowed: copy the exact package key pnpm printed into the profile's `pnpm-workspace.yaml` under `allowBuilds` and re-run `add`. Only allow packages whose source you trust — this executes the package's code on your machine at install time.
+Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
 
 ## Activate tavily as the search provider
 
@@ -124,7 +124,7 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ```sh
 pnpm install
-pnpm build        # tsc → lib/ (also runs via prepare on git installs)
+pnpm build        # tsc → lib/; commit lib/ together with source changes
 pnpm test         # vitest unit suite
 pnpm test:coverage  # per-file 100% gate on src/
 pnpm test:e2e     # real-API smoke; self-skips without $TAVILY_API_KEY

@@ -30,7 +30,7 @@ pnpm pack
 dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 ```
 
-git 安装拿到的是源码，因此包内提供 `prepare` 脚本在安装时构建 `lib/`。pnpm ≥ 10 默认禁止执行 git 依赖的 `prepare`：把 pnpm 打印的包键加入 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds` 后重试。只放行你信任的源码——这意味着允许该包代码在安装时于本机执行。
+构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
 
 ## 指定 tavily 为 search provider
 
@@ -124,7 +124,7 @@ git 安装拿到的是源码，因此包内提供 `prepare` 脚本在安装时�
 
 ```sh
 pnpm install
-pnpm build        # tsc → lib/（git 安装时由 prepare 执行）
+pnpm build        # tsc → lib/；lib/ 需随源码改动一起提交
 pnpm test         # vitest 单元测试
 pnpm test:coverage  # src 逐文件 100% 门禁
 pnpm test:e2e     # 真实 API smoke；无 $TAVILY_API_KEY 时自跳过
