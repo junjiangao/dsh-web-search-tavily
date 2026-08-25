@@ -16,8 +16,11 @@ Highlights:
 This package is distributed as a GitHub repository (not published to npm). Install it into a profile with `dsh plugin`, which forwards to pnpm:
 
 ```sh
-# GitHub spec — pin a commit so a later push cannot silently change what runs
-dsh plugin --profile <name> add github:<owner>/dsh-web-search-tavily#<sha>
+# GitHub spec — main branch
+dsh plugin --profile <name> add github:junjiangao/dsh-web-search-tavily
+
+# pin a commit when you need reproducibility (a later push cannot change it)
+# dsh plugin --profile <name> add github:junjiangao/dsh-web-search-tavily#<sha>
 
 # or a local checkout
 dsh plugin --profile <name> add /path/to/dsh-web-search-tavily

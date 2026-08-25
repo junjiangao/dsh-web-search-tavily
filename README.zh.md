@@ -16,8 +16,11 @@
 本包以 GitHub 仓库形式分发（暂不发布 npm）。用 `dsh plugin` 安装到 profile（内部转发 pnpm）：
 
 ```sh
-# GitHub spec——建议 pin commit，避免后续推送静默改变安装内容
-dsh plugin --profile <name> add github:<owner>/dsh-web-search-tavily#<sha>
+# GitHub spec——main 分支
+dsh plugin --profile <name> add github:junjiangao/dsh-web-search-tavily
+
+# 需要可复现性时可 pin commit（后续推送不会改变安装内容）
+# dsh plugin --profile <name> add github:junjiangao/dsh-web-search-tavily#<sha>
 
 # 或本地目录
 dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
