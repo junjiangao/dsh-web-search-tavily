@@ -78,14 +78,14 @@ async function settle() { await new Promise((resolve) => setTimeout(resolve, 0))
 describe('TavilyCardController credentials wire', () => {
   it('asks the credentials remote with a positional reference array', async () => {
     const credentials = fakeCredentials()
-    new TavilyCardController(new FakeScope(), credentials.api)
+    new TavilyCardController(new FakeScope(), () => credentials.api)
     await settle()
     expect(credentials.describe).toHaveBeenCalledWith(['TAVILY_API_KEY'])
   })
 
   it('reports a stored key as configured via describe', async () => {
     const credentials = fakeCredentials({ configured: true, writable: true })
-    const controller = new TavilyCardController(new FakeScope(), credentials.api)
+    const controller = new TavilyCardController(new FakeScope(), () => credentials.api)
     await settle()
     expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey).toMatchObject({
       configured: true,
@@ -96,7 +96,7 @@ describe('TavilyCardController credentials wire', () => {
 
   it('reports a launch-environment-held reference as unwritable', async () => {
     const credentials = fakeCredentials({ configured: true, writable: false })
-    const controller = new TavilyCardController(new FakeScope(), credentials.api)
+    const controller = new TavilyCardController(new FakeScope(), () => credentials.api)
     await settle()
     expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey).toEqual({
       text: '',
@@ -108,7 +108,7 @@ describe('TavilyCardController credentials wire', () => {
   it('saves the typed key through credentials.set and the recommended fields into the section', async () => {
     const scope = new FakeScope()
     const credentials = fakeCredentials()
-    const controller = new TavilyCardController(scope, credentials.api)
+    const controller = new TavilyCardController(scope, () => credentials.api)
     await settle()
 
     const actions = controller.inject()
@@ -132,7 +132,7 @@ describe('TavilyCardController credentials wire', () => {
     const scope = new FakeScope()
     const credentials = fakeCredentials()
     credentials.set.mockResolvedValue({ ok: false, error: { code: 'credential-rejected', message: 'supplied read-only by the launching environment' } })
-    const controller = new TavilyCardController(scope, credentials.api)
+    const controller = new TavilyCardController(scope, () => credentials.api)
     await settle()
 
     const actions = controller.inject()
@@ -151,9 +151,22 @@ describe('TavilyCardController credentials wire', () => {
     expect(snapshot.apiKey.text).toBe('tvly-real-key-123')
   })
 
+  it('retries until the credentials namespace mounts, then reports configured', async () => {
+    const credentials = fakeCredentials({ configured: true, writable: true })
+    let face: CredentialsApi | undefined
+    const controller = new TavilyCardController(new FakeScope(), () => face, { delayMs: 5, maxAttempts: 5 })
+    await settle()
+    // The namespace has not mounted yet: no crash, and the card stays
+    // unconfigured instead of keyless-by-assumption forever.
+    expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey.configured).toBe(false)
+    face = credentials.api
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey.configured).toBe(true)
+  })
+
   it('refreshes the credential when the host reports a reference update', async () => {
     const credentials = fakeCredentials()
-    const controller = new TavilyCardController(new FakeScope(), credentials.api)
+    const controller = new TavilyCardController(new FakeScope(), () => credentials.api)
     await settle()
     expect(credentials.describe).toHaveBeenCalledTimes(1)
 

@@ -42,9 +42,11 @@ export const SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /**
  * Services the client face needs from the shell. The credentials namespace is
- * read as `ctx.remote.credentials` (the official cards do the same): inject
- * entries resolve as literal service names, so a dotted `remote.credentials`
- * entry would pend forever instead of drilling into the remote proxy.
+ * deliberately NOT declared as a dotted `remote.credentials` inject: that
+ * makes the fiber pend on the namespace, which the remote assembly mounts
+ * asynchronously after `remote` itself appears. The face is resolved lazily
+ * at call time instead, and a failed credential read retries with backoff
+ * until the namespace mounts.
  */
 export const inject = ['slots', 'locale', 'settingsScope', 'remote']
 
@@ -166,23 +168,43 @@ const RECOMMENDED_CONFIG: Record<string, unknown> = {
 }
 
 /**
+ * Credential-read retry pacing: the remote assembly mounts the credentials
+ * namespace asynchronously, so the first read can race it. Failed reads
+ * back off exponentially and stop once the read lands or attempts run out.
+ */
+const READ_RETRY_DELAY_MS = 1000
+const READ_RETRY_MAX_ATTEMPTS = 6
+
+/**
  * Controller: binds the namespace scope, owns the form, and watches the
  * credential the section references — exactly as the official web-search
- * card does (`ctx.remote.credentials`). The key state comes from
- * `credentials.describe`, so an exported `TAVILY_API_KEY` (or a
- * credential-store record) reports as configured with no manual setup; a
+ * card does. The credentials face is resolved lazily on every call: the
+ * namespace mounts asynchronously after this plugin activates, so capturing
+ * it once could capture `undefined` and every read would fail silently,
+ * leaving the card in keyless mode no matter what the host holds. The key
+ * state comes from `credentials.describe` — an exported `TAVILY_API_KEY` (or
+ * a credential-store record) reports as configured with no manual setup; a
  * staged key is written through the credentials domain.
  */
 export class TavilyCardController {
   private readonly scope: SettingsScope
-  private readonly credentials: CredentialsApi
+  private readonly credentialsFace: () => CredentialsApi | undefined
+  private readonly retry: { delayMs: number; maxAttempts: number }
   private readonly form: FormModel
   private readonly store: SnapshotStore<TavilyCardState>
   private credential = { ref: '', configured: false, writable: true }
+  private readTimer: ReturnType<typeof setTimeout> | undefined
 
-  constructor(scope: SettingsScope, credentials: CredentialsApi) {
+  constructor(
+    scope: SettingsScope,
+    credentialsFace: () => CredentialsApi | undefined,
+    retry: { delayMs: number; maxAttempts: number } = {
+      delayMs: READ_RETRY_DELAY_MS, maxAttempts: READ_RETRY_MAX_ATTEMPTS,
+    },
+  ) {
     this.scope = scope
-    this.credentials = credentials
+    this.credentialsFace = credentialsFace
+    this.retry = retry
     this.form = new FormModel(scope, FORM_FIELDS, {
       configured: () => this.credentialConfigured(),
       writable: () => this.credential.writable,
@@ -230,9 +252,14 @@ export class TavilyCardController {
    * Ask the credentials domain about the reference the section currently
    * names. The answer is stored with the reference it describes: `apiKeyEnv`
    * can change between the request and its response, so a response is
-   * published only while it still answers for the reference in force.
+   * published only while it still answers for the reference in force. A read
+   * that cannot land — the namespace not mounted yet, a transport failure, a
+   * host refusal — is retried with backoff rather than silently leaving the
+   * card keyless forever.
    */
-  private async readCredential(): Promise<void> {
+  private async readCredential(attempt = 0): Promise<void> {
+    clearTimeout(this.readTimer)
+    this.readTimer = undefined
     const ref = this.credentialRef()
     if (ref !== this.credential.ref) {
       this.credential = { ref, configured: false, writable: true }
@@ -240,11 +267,14 @@ export class TavilyCardController {
     }
     let response
     try {
-      response = await this.credentials.describe([ref])
+      response = await this.credentialsFace()?.describe([ref])
     } catch {
+      response = undefined
+    }
+    if (response === undefined || !response.ok || ref !== this.credentialRef()) {
+      this.scheduleReadRetry(attempt)
       return
     }
-    if (!response.ok || ref !== this.credentialRef()) return
     const view = response.value?.[ref]
     const next = {
       ref,
@@ -254,6 +284,15 @@ export class TavilyCardController {
     if (next.configured === this.credential.configured && next.writable === this.credential.writable) return
     this.credential = next
     this.store.set(this.projection())
+  }
+
+  /** Re-read after a delay; bounded so a permanently absent face stops soon. */
+  private scheduleReadRetry(attempt: number): void {
+    if (attempt >= this.retry.maxAttempts) return
+    clearTimeout(this.readTimer)
+    this.readTimer = setTimeout(() => {
+      void this.readCredential(attempt + 1)
+    }, this.retry.delayMs * 2 ** attempt)
   }
 
   /**
@@ -275,8 +314,10 @@ export class TavilyCardController {
    * save-failure line.
    */
   private async writeKey(value: string): Promise<{ ok: boolean; message?: string }> {
+    const credentials = this.credentialsFace()
+    if (credentials === undefined) return { ok: false }
     try {
-      const response = await this.credentials.set(this.credentialRef(), value)
+      const response = await credentials.set(this.credentialRef(), value)
       if (!response.ok) return { ok: false, message: response.error?.message }
     } catch {
       return { ok: false }
@@ -731,7 +772,10 @@ export function apply(ctx: ClientContext): void {
   ctx.locale.register(LOCALE_NS, { zh, en })
   const controller = new TavilyCardController(
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
-    ctx.remote.credentials,
+    // Resolved on every call: the credentials namespace mounts asynchronously
+    // after this plugin activates, so capturing it here could capture
+    // `undefined` for the lifetime of the card.
+    () => ctx.remote.credentials,
   )
   ctx.effect(() => ctx.remote.$on('credentials/reference-updated', (ref) => {
     controller.refreshCredential(ref)
