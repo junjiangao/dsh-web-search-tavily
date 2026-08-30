@@ -65,7 +65,7 @@ export interface CredentialHooks {
    * Write the staged value through the credentials domain. A refusal carries
    * the host's own message so the card can surface it verbatim.
    */
-  write(value: string): Promise<{ ok: boolean; message?: string }>
+  write(value: string): Promise<{ ok: boolean; message?: string | undefined }>
 }
 
 /** Snapshot of one control as the card renders it. */

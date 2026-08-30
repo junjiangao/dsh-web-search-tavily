@@ -108,7 +108,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 ### 客户端设置卡片
 
-包内还携带一个 client 面（`dsh.client` 声明 + `exports["./client"]`，构建产物 `lib/client.js`）：向 web 设置页的"插件 → 插件配置"页注册 `web-search-tavily` 卡片，可编辑常用字段（API key、key 环境变量、接口地址、结果数量、检索深度、topic、answer/images/raw content/favicon/usage 开关）。卡片绑定同一个 settings namespace；其他字段保存即写入设置文档，**API key 走凭据域**（`remote.credentials`，与官方 web-search 卡片同一调用面：位置参数 `credentials.set(ref, value)`、`credentials.describe([ref])`，`{ ok, value/error }` 信封），不落设置文档。`@deepseek-ai/dsh-client-ui-primitives` 已声明为 bundle 外部依赖（取原生 chevron 图标）。安装后需重启 web 服务让 client 模块图收录该包（client-modules 启动时扫描 loader 条目）。
+包内还携带一个 client 面（`dsh.client` 声明 + `exports["./client"]`，构建产物 `lib/client.js`）：向 web 设置页的"插件 → 插件配置"页注册 `web-search-tavily` 卡片，可编辑常用字段（API key、key 环境变量、接口地址、结果数量、检索深度、topic、answer/images/raw content/favicon/usage 开关）。卡片绑定同一个 settings namespace；其他字段保存即写入设置文档，**API key 走凭据域**，不落设置文档。调用面按部署版本逐次探测：dsh **0.1.1-rc.x** 走 `connection.api.credentials`（对象参数、`{ result: { ok, value | error } }` 信封，与该版本官方卡片完全一致），dsh **0.1.2+** 走 `remote.credentials`（位置参数、RemoteResult 信封）；读取失败会退避重试直到调用面就绪。`@deepseek-ai/dsh-client-ui-primitives` 已声明为 bundle 外部依赖（取原生 chevron 图标）。安装后需重启 web 服务让 client 模块图收录该包（client-modules 启动时扫描 loader 条目）。
 
 卡片特性：
 
