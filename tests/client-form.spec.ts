@@ -64,6 +64,7 @@ describe('FormModel shell state', () => {
       invalid: false,
       saving: false,
       failed: false,
+      failureMessage: undefined,
     })
   })
 
@@ -110,16 +111,18 @@ describe('FormModel field projections', () => {
   })
 
   it('projects credentials with the domain-configured state', () => {
-    const configured = model(new FakeScope(), { configured: () => true, write: async () => true })
-    expect(configured.secretField('apiKey')).toEqual({ text: '', configured: true })
-    const unconfigured = model(new FakeScope(), { configured: () => false, write: async () => true })
-    expect(unconfigured.secretField('apiKey')).toEqual({ text: '', configured: false })
+    const configured = model(new FakeScope(), { configured: () => true, writable: () => true, write: async () => ({ ok: true }) })
+    expect(configured.secretField('apiKey')).toEqual({ text: '', configured: true, writable: true })
+    const unconfigured = model(new FakeScope(), { configured: () => false, writable: () => true, write: async () => ({ ok: true }) })
+    expect(unconfigured.secretField('apiKey')).toEqual({ text: '', configured: false, writable: true })
+    const locked = model(new FakeScope(), { configured: () => true, writable: () => false, write: async () => ({ ok: true }) })
+    expect(locked.secretField('apiKey')).toEqual({ text: '', configured: true, writable: false })
   })
 
   it('treats a staged key draft as configured until saved', () => {
-    const form = model(new FakeScope(), { configured: () => false, write: async () => true })
+    const form = model(new FakeScope(), { configured: () => false, writable: () => true, write: async () => ({ ok: true }) })
     form.actions().edit('apiKey', 'sk-456')
-    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true })
+    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true, writable: true })
   })
 })
 
@@ -198,8 +201,8 @@ describe('FormModel save planning', () => {
 
   it('writes staged keys through the credential hook, never the section', async () => {
     const scope = new FakeScope()
-    const write = vi.fn(async () => true)
-    const form = model(scope, { configured: () => false, write })
+    const write = vi.fn(async () => ({ ok: true }))
+    const form = model(scope, { configured: () => false, writable: () => true, write })
     form.actions().edit('apiKey', 'sk-456')
     form.actions().save()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -209,8 +212,8 @@ describe('FormModel save planning', () => {
   })
 
   it('ignores a blank key draft', async () => {
-    const write = vi.fn(async () => true)
-    const form = model(new FakeScope(), { configured: () => false, write })
+    const write = vi.fn(async () => ({ ok: true }))
+    const form = model(new FakeScope(), { configured: () => false, writable: () => true, write })
     form.actions().edit('apiKey', '   ')
     expect(form.shell().dirty).toBe(false)
     form.actions().save()
@@ -219,13 +222,31 @@ describe('FormModel save planning', () => {
   })
 
   it('keeps a staged key when the credential write fails', async () => {
-    const form = model(new FakeScope(), { configured: () => false, write: async () => false })
+    const form = model(new FakeScope(), { configured: () => false, writable: () => true, write: async () => ({ ok: false }) })
     form.actions().edit('apiKey', 'sk-456')
     form.actions().save()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(form.shell().failed).toBe(true)
     expect(form.shell().dirty).toBe(true)
-    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true })
+    expect(form.shell().failureMessage).toBeUndefined()
+    expect(form.secretField('apiKey')).toEqual({ text: 'sk-456', configured: true, writable: true })
+  })
+
+  it('surfaces the host refusal message and clears it on the next edit', async () => {
+    const form = model(new FakeScope(), {
+      configured: () => false,
+      writable: () => true,
+      write: async () => ({ ok: false, message: 'supplied read-only by the launching environment' }),
+    })
+    form.actions().edit('apiKey', 'sk-456')
+    form.actions().save()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(form.shell().failed).toBe(true)
+    expect(form.shell().failureMessage).toBe('supplied read-only by the launching environment')
+    // A fresh edit drops the stale refusal with the failure state.
+    form.actions().edit('apiKey', 'sk-457')
+    expect(form.shell().failureMessage).toBeUndefined()
+    expect(form.shell().failed).toBe(false)
   })
 
   it('keeps drafts when a write fails', async () => {

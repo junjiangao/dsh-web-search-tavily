@@ -89,7 +89,19 @@ describe('TavilyCardController credentials wire', () => {
     await settle()
     expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey).toMatchObject({
       configured: true,
+      writable: true,
       text: '',
+    })
+  })
+
+  it('reports a launch-environment-held reference as unwritable', async () => {
+    const credentials = fakeCredentials({ configured: true, writable: false })
+    const controller = new TavilyCardController(new FakeScope(), credentials.api)
+    await settle()
+    expect(controller.inject().hooks.tavilyCard.getSnapshot().apiKey).toEqual({
+      text: '',
+      configured: true,
+      writable: false,
     })
   })
 
@@ -119,7 +131,7 @@ describe('TavilyCardController credentials wire', () => {
   it('keeps the key draft and reports failure when the host refuses the write', async () => {
     const scope = new FakeScope()
     const credentials = fakeCredentials()
-    credentials.set.mockResolvedValue({ ok: false, error: { code: 'credentials-read-only', message: 'read-only' } })
+    credentials.set.mockResolvedValue({ ok: false, error: { code: 'credential-rejected', message: 'supplied read-only by the launching environment' } })
     const controller = new TavilyCardController(scope, credentials.api)
     await settle()
 
@@ -131,7 +143,11 @@ describe('TavilyCardController credentials wire', () => {
     expect(credentials.set).toHaveBeenCalledWith('TAVILY_API_KEY', 'tvly-real-key-123')
     expect(scope.snapshot.user).toBeNull()
     const snapshot = controller.inject().hooks.tavilyCard.getSnapshot()
-    expect(snapshot.shell).toMatchObject({ dirty: true, failed: true })
+    expect(snapshot.shell).toMatchObject({
+      dirty: true,
+      failed: true,
+      failureMessage: 'supplied read-only by the launching environment',
+    })
     expect(snapshot.apiKey.text).toBe('tvly-real-key-123')
   })
 

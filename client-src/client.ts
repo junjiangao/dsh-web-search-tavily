@@ -185,6 +185,7 @@ export class TavilyCardController {
     this.credentials = credentials
     this.form = new FormModel(scope, FORM_FIELDS, {
       configured: () => this.credentialConfigured(),
+      writable: () => this.credential.writable,
       write: (value) => this.writeKey(value),
     })
     this.store = this.form.bind(() => this.projection())
@@ -269,17 +270,19 @@ export class TavilyCardController {
   /**
    * Write the staged key through the credentials domain, then re-read
    * whether the host now holds one. The literal never enters the settings
-   * document.
+   * document. A refusal surfaces the host's own message verbatim — for
+   * instance the launch-environment shadow refusal — instead of a generic
+   * save-failure line.
    */
-  private async writeKey(value: string): Promise<boolean> {
+  private async writeKey(value: string): Promise<{ ok: boolean; message?: string }> {
     try {
       const response = await this.credentials.set(this.credentialRef(), value)
-      if (!response.ok) return false
+      if (!response.ok) return { ok: false, message: response.error?.message }
     } catch {
-      return false
+      return { ok: false }
     }
     await this.readCredential()
-    return this.credentialConfigured()
+    return { ok: this.credentialConfigured() }
   }
 
   /** The face the card's slot registration injects. */
@@ -403,7 +406,8 @@ function CardShell(props: {
         ...children,
         createElement('div', { className: 'tavily-footer' },
           state.failed
-            ? createElement('p', { className: 'tavily-failed', role: 'status' }, t('saveFailed'))
+            ? createElement('p', { className: 'tavily-failed', role: 'status' },
+              state.failureMessage ?? t('saveFailed'))
             : null,
           createElement('button', {
             type: 'button',
@@ -596,7 +600,12 @@ function TavilyCard(props: TavilyCardProps) {
         id: 'plugin-config-tavily-key',
         label: t('apiKey'),
         hint: t('apiKeyHint'),
-        disabled,
+        // The credentials domain accepts a key even when the settings document
+        // itself is read-only; they are separate stores with separate
+        // refusals. Its own writability is what disables this control — a key
+        // sourced from the launch environment cannot be written from here
+        // (the official web-search card gates on exactly this).
+        disabled: !state.apiKey.writable,
         text: state.apiKey.text,
         configured: state.apiKey.configured,
         stateLabel: t(state.apiKey.configured ? 'apiKeySet' : 'apiKeyUnset'),

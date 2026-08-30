@@ -59,8 +59,13 @@ export type FieldSpec = TextSpec | SelectSpec | BooleanSpec | CredentialSpec
 export interface CredentialHooks {
   /** Whether the referenced credential resolves (env var, store, literal). */
   configured(): boolean
-  /** Write the staged value through the credentials domain; resolves to acceptance. */
-  write(value: string): Promise<boolean>
+  /** Whether the credentials domain accepts writes for the reference right now. */
+  writable(): boolean
+  /**
+   * Write the staged value through the credentials domain. A refusal carries
+   * the host's own message so the card can surface it verbatim.
+   */
+  write(value: string): Promise<{ ok: boolean; message?: string }>
 }
 
 /** Snapshot of one control as the card renders it. */
@@ -115,6 +120,8 @@ export interface ShellState {
   invalid: boolean
   saving: boolean
   failed: boolean
+  /** The host's refusal message for the last failed write, when it carried one. */
+  failureMessage: string | undefined
 }
 
 /** One planned write produced by a save. */
@@ -131,6 +138,7 @@ export class FormModel {
   private readonly listeners = new Set<() => void>()
   private saving = false
   private failed = false
+  private failureMessage: string | undefined
 
   constructor(scope: SettingsScope, specs: readonly FieldSpec[], credential?: CredentialHooks) {
     this.scope = scope
@@ -157,6 +165,7 @@ export class FormModel {
       invalid: plan.some((item) => item.write === undefined),
       saving: this.saving,
       failed: this.failed,
+      failureMessage: this.failureMessage,
     }
   }
 
@@ -184,17 +193,22 @@ export class FormModel {
     }
   }
 
-  /** Credential control state for the secret field rendering. */
-  secretField(field: string): { text: string; configured: boolean } {
+  /**
+   * Credential control state for the secret field rendering. `writable` is
+   * the credentials domain's own answer: a reference supplied by the launch
+   * environment is read-only here, exactly as the official cards treat it.
+   */
+  secretField(field: string): { text: string; configured: boolean; writable: boolean } {
     const spec = this.specOf(field)
     if (spec.kind !== 'credential') throw new Error('web-search-tavily: ' + field + ' is not a credential field')
     const configured = this.credential?.configured() ?? false
+    const writable = this.credential?.writable() ?? true
     const staged = this.staged.get(field)
     if (staged === undefined || staged.kind === 'clear') {
-      return { text: EMPTY_TEXT, configured }
+      return { text: EMPTY_TEXT, configured, writable }
     }
     const text = typeof staged.value === 'string' ? staged.value : EMPTY_TEXT
-    return { text, configured: configured || text.length > 0 }
+    return { text, configured: configured || text.length > 0, writable }
   }
 
   /** Select control state: the effective option, or undefined when unset. */
@@ -241,6 +255,7 @@ export class FormModel {
         if (this.staged.size === 0 && !this.failed) return
         this.staged.clear()
         this.failed = false
+        this.failureMessage = undefined
         this.publish()
       },
     }
@@ -249,6 +264,7 @@ export class FormModel {
   private stage(field: string, edit: Staged) {
     this.staged.set(field, edit)
     this.failed = false
+    this.failureMessage = undefined
     this.publish()
   }
 
@@ -259,9 +275,10 @@ export class FormModel {
     if (plan.length === 0 || this.saving || writes.length !== plan.length) return
     this.saving = true
     this.failed = false
+    this.failureMessage = undefined
     this.publish()
     let landed = true
-    for (const write of writes) landed = (await write()) && landed
+    for (const write of writes) landed = await write() && landed
     if (landed) this.staged.clear()
     this.saving = false
     this.failed = !landed
@@ -276,9 +293,14 @@ export class FormModel {
       if (spec.kind === 'credential') {
         // A write-only credential control: only a non-empty staged value
         // writes, through the credentials domain, never into the section.
+        // A refusal keeps the host's own message for the card to surface.
         if (staged.kind === 'set' && typeof staged.value === 'string' && staged.value.trim() !== '') {
           const value = staged.value.trim()
-          plan.push({ field, write: () => this.credential?.write(value) ?? Promise.resolve(false) })
+          plan.push({ field, write: async () => {
+            const result = await this.credential?.write(value) ?? { ok: false }
+            if (!result.ok && result.message !== undefined) this.failureMessage = result.message
+            return result.ok
+          } })
         }
         continue
       }

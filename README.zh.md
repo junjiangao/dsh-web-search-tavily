@@ -114,7 +114,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 - **原生卡片外观**：披露头部、正文与页脚逐条对齐官方 `PluginCard`——原生 primitives 14px chevron 图标、官方间距/字号/配色（`tavily-` 前缀样式表）、文档只读时的只读提示，以及宿主确认保存后的自动折叠。默认收起，整行头部（标题+描述+chevron）点击展开；未保存改动时头部显示徽标。
 - **推荐配置**："使用推荐配置"填入 **Tavily 官方默认值**（`apiKeyEnv: TAVILY_API_KEY`、`searchDepth: basic`、`maxResults: 5`、`includeAnswer/includeImages/includeRawContent/includeFavicon/includeUsage: false`）——刻意不用激进值，因为 **keyless 模式（无 key）会限流并可能忽略/降级结果数、深度、answer 参数**，官方默认在有无 key 两种模式下行为一致。填入后为暂存状态，可逐个调整再保存。
-- **密钥状态自动识别**：与官方 `web-search-deepseek` 卡片一致，卡片通过 `credentials.describe` 询问凭据域——`TAVILY_API_KEY` 环境变量已导出、或凭据库/设置字面量中已有 key 时直接显示"已配置"，**无须手动设置**；只有所有来源都为空时才显示 keyless 提示条（说明限流与参数降级风险）。
+- **密钥状态自动识别**：与官方 `web-search-deepseek` 卡片一致，卡片通过 `credentials.describe` 询问凭据域——`TAVILY_API_KEY` 环境变量已导出、或凭据库/设置字面量中已有 key 时直接显示"已配置"，**无须手动设置**；只有所有来源都为空时才显示 keyless 提示条（说明限流与参数降级风险）。由**启动环境**提供的 key 在此处只读：密钥输入框随之禁用（与官方卡片同样依据 `writable` 判定）；写入被真正拒绝时，卡片逐字显示宿主的拒绝信息，而不是笼统的保存失败文案。
 - **字段说明**：每个字段带 hint，标注 tokens 影响（`includeRawContent` 显著增加 tokens/成本、`includeAnswer` 增加输出 tokens、`maxResults` 越多越耗、`searchDepth: advanced` 更慢更耗）。
 
 ## 映射
