@@ -40,8 +40,13 @@ export const name = 'web-search-tavily'
 /** The settings namespace this card binds. */
 export const SETTINGS_NAMESPACE = 'web-search-tavily'
 
-/** Services the client face needs from the shell. */
-export const inject = ['slots', 'locale', 'settingsScope', 'remote', 'remote.credentials']
+/**
+ * Services the client face needs from the shell. The credentials namespace is
+ * read as `ctx.remote.credentials` (the official cards do the same): inject
+ * entries resolve as literal service names, so a dotted `remote.credentials`
+ * entry would pend forever instead of drilling into the remote proxy.
+ */
+export const inject = ['slots', 'locale', 'settingsScope', 'remote']
 
 /** The settings namespace this card binds. */
 interface ClientContext extends Context {
