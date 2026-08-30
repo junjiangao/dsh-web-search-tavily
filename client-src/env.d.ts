@@ -51,6 +51,15 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
   export function createSnapshotStore<T>(initial: T): SnapshotStore<T>
 }
 
+declare module '@deepseek-ai/dsh-client-ui-primitives' {
+  /**
+   * The native 14px chevron every official plugin card's disclosure header
+   * uses (`ic_ds_chevron_down_outline_14`); resolved from the shell's static
+   * module table.
+   */
+  export function IconChevronDownOutline14(props: { size?: number; className?: string }): unknown
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   /** Slot registration options (the subset client plugins use). */
   export interface SlotRegistrationOptions {

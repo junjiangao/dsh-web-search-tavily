@@ -13,13 +13,18 @@
  * the shell's static module table or the boot graph (`dsh.client.external`),
  * and the bundle itself is a factory-form module the module loader invokes.
  *
- * All card chrome is drawn with plain elements and CSS variables: the
- * official PluginCard/SecretField/ValueField components are private to
- * dsh-client-ui-settings-plugins and are NOT exported by
- * dsh-client-ui-primitives (only low-level pieces like Button live there).
+ * Card chrome mirrors the official plugin-card exactly: the disclosure
+ * header (title + description + unsaved badge + the native 14px primitives
+ * chevron) and every style value are lifted 1:1 from the official
+ * PluginCard.module.css / fields.module.css into a scoped stylesheet, so the
+ * card reads as a native part of the settings tab. The official
+ * PluginCard/SecretField/ValueField components themselves are private to
+ * dsh-client-ui-settings-plugins; only the primitives icon is a public
+ * shell export.
  */
 
-import { createElement, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
+import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SlotsService } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocaleService } from '@deepseek-ai/dsh-client-locale'
@@ -36,38 +41,48 @@ export const name = 'web-search-tavily'
 export const SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /** Services the client face needs from the shell. */
-export const inject = ['slots', 'locale', 'settingsScope', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'settingsScope', 'remote', 'remote.credentials']
 
 /** The settings namespace this card binds. */
 interface ClientContext extends Context {
   slots: SlotsService
   locale: LocaleService
   settingsScope: SettingsScopeService
-  connection: ConnectionService
   remote: RemoteService
 }
 
 /**
- * Minimal wire face of the host credentials domain, mirroring what the
- * official settings cards consume (`connection.api.credentials`): `describe`
- * reports whether a reference resolves (environment variable, credential
- * store, ...) without ever returning its value, and `set` writes a new value.
+ * Per-reference credential state the credentials remote reports; the literal
+ * value never rides the wire (`@deepseek-ai/dsh-credentials` `CredentialInfo`).
  */
 export interface CredentialView {
   configured: boolean
   writable: boolean
   source?: string
 }
+
+/**
+ * What every host Remote method resolves to (`@deepseek-ai/dsh-typert-protocol`
+ * `RemoteResult`): carrier and business failures fold into the error branch.
+ */
+export type RemoteResult<T> =
+  | { readonly ok: true; readonly value?: T }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+
+/**
+ * Wire face of the host credentials remote (`ctx.remote.credentials`), the
+ * same face the official web-search and Models cards consume: `describe`
+ * reports whether references resolve (environment variable, credential
+ * store, ...) without ever returning their values, and `set` writes a new
+ * value. Both take POSITIONAL arguments; the gateway folds them into the
+ * named `args` object the host schema validates.
+ */
 export interface CredentialsApi {
-  describe(request: { refs: string[] }): Promise<{
-    result: { ok: boolean; value: { credentials: Record<string, CredentialView> } }
-  }>
-  set(request: { ref: string; value: string }): Promise<{
-    result: { ok: boolean; value: Record<string, never> }
-  }>
+  describe(refs: string[]): Promise<RemoteResult<Record<string, CredentialView>>>
+  set(ref: string, value: string): Promise<RemoteResult<null>>
 }
-export interface ConnectionService { api: { credentials: CredentialsApi } }
 export interface RemoteService {
+  credentials: CredentialsApi
   $on(event: string, listener: (payload: string) => void): () => void
 }
 
@@ -148,20 +163,21 @@ const RECOMMENDED_CONFIG: Record<string, unknown> = {
 /**
  * Controller: binds the namespace scope, owns the form, and watches the
  * credential the section references — exactly as the official web-search
- * card does. The key state comes from `credentials.describe`, so an exported
- * `TAVILY_API_KEY` (or a credential-store record) reports as configured with
- * no manual setup; a staged key is written through the credentials domain.
+ * card does (`ctx.remote.credentials`). The key state comes from
+ * `credentials.describe`, so an exported `TAVILY_API_KEY` (or a
+ * credential-store record) reports as configured with no manual setup; a
+ * staged key is written through the credentials domain.
  */
-class TavilyCardController {
+export class TavilyCardController {
   private readonly scope: SettingsScope
-  private readonly api: { credentials: CredentialsApi }
+  private readonly credentials: CredentialsApi
   private readonly form: FormModel
   private readonly store: SnapshotStore<TavilyCardState>
   private credential = { ref: '', configured: false, writable: true }
 
-  constructor(scope: SettingsScope, api: { credentials: CredentialsApi }) {
+  constructor(scope: SettingsScope, credentials: CredentialsApi) {
     this.scope = scope
-    this.api = api
+    this.credentials = credentials
     this.form = new FormModel(scope, FORM_FIELDS, {
       configured: () => this.credentialConfigured(),
       write: (value) => this.writeKey(value),
@@ -218,12 +234,12 @@ class TavilyCardController {
     }
     let response
     try {
-      response = await this.api.credentials.describe({ refs: [ref] })
+      response = await this.credentials.describe([ref])
     } catch {
       return
     }
-    if (!response.result.ok || ref !== this.credentialRef()) return
-    const view = response.result.value.credentials[ref]
+    if (!response.ok || ref !== this.credentialRef()) return
+    const view = response.value?.[ref]
     const next = {
       ref,
       configured: view?.configured ?? false,
@@ -252,8 +268,8 @@ class TavilyCardController {
    */
   private async writeKey(value: string): Promise<boolean> {
     try {
-      const response = await this.api.credentials.set({ ref: this.credentialRef(), value })
-      if (!response.result.ok) return false
+      const response = await this.credentials.set(this.credentialRef(), value)
+      if (!response.ok) return false
     } catch {
       return false
     }
@@ -271,199 +287,65 @@ class TavilyCardController {
 }
 
 // ---------------------------------------------------------------------------
-// Card chrome — plain elements styled with the shell's CSS variables.
-// The header follows the official plugin-card pattern: the whole head row is
-// one toggle button (title + description + unsaved badge + rotating chevron)
-// and the body renders only while expanded.
+// Card chrome — a 1:1 mirror of the official plugin-card. The official
+// PluginCard/SecretField/ValueField components and their CSS modules are
+// private to dsh-client-ui-settings-plugins, so the values below are lifted
+// verbatim from PluginCard.module.css and fields.module.css under a
+// `tavily-` class prefix, injected once per card. The chevron is the native
+// primitives icon the official cards render.
 // ---------------------------------------------------------------------------
 
-const cardStyle: Record<string, string> = {
-  listStyle: 'none',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '14px',
-  padding: '16px',
-  borderRadius: '16px',
-  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.25))',
-  background: 'var(--dsw-alias-surface-l2, transparent)',
-}
-const headerButtonStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-  width: '100%',
-  padding: '2px 4px',
-  border: 'none',
-  background: 'transparent',
-  cursor: 'pointer',
-  borderRadius: '8px',
-  textAlign: 'left',
-  fontFamily: 'inherit',
-}
-const headerHoverStyle: Record<string, string> = {
-  background: 'var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.08))',
-}
-const headTextStyle: Record<string, string> = {
-  flex: '1 1 auto',
-  minWidth: '0',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px',
-}
-const cardTitleStyle: Record<string, string> = {
-  fontSize: '15px',
-  fontWeight: '600',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-}
-const cardDescriptionStyle: Record<string, string> = {
-  fontSize: '13px',
-  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
-}
-const pendingBadgeStyle: Record<string, string> = {
-  fontSize: '11px',
-  padding: '2px 8px',
-  borderRadius: '999px',
-  background: 'var(--dsw-alias-accent, #3b82f6)',
-  color: 'var(--dsw-alias-label-on-accent, #fff)',
-  flex: 'none',
-}
-const chevronStyle: Record<string, string> = {
-  display: 'flex',
-  flex: 'none',
-  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
-  transition: 'transform .15s ease',
-}
-const chevronOpenStyle: Record<string, string> = {
-  transform: 'rotate(180deg)',
-}
-const rowStyle: Record<string, string> = {
-  padding: '4px 0',
-}
-const labelStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  fontSize: '13px',
-  fontWeight: '500',
-  marginBottom: '4px',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-}
-const checkboxLabelStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  fontSize: '13px',
-  fontWeight: '500',
-  cursor: 'pointer',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-}
-const badgeStyle: Record<string, string> = {
-  fontSize: '11px',
-  padding: '1px 6px',
-  borderRadius: '6px',
-  background: 'var(--dsw-alias-fill-l2, rgba(128,128,128,.15))',
-  color: 'var(--dsw-alias-label-secondary, inherit)',
-}
-const hintStyle: Record<string, string> = {
-  fontSize: '12px',
-  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
-  margin: '4px 0 0',
-}
-const inputStyle: Record<string, string> = {
-  width: '100%',
-  boxSizing: 'border-box',
-  padding: '6px 10px',
-  borderRadius: '8px',
-  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))',
-  background: 'var(--dsw-alias-input-fill, transparent)',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-  fontSize: '13px',
-  fontFamily: 'inherit',
-}
-const inputInvalidStyle: Record<string, string> = {
-  ...inputStyle,
-  borderColor: 'var(--dsw-alias-danger, #e5484d)',
-}
-const selectStyle: Record<string, string> = {
-  ...inputStyle,
-  width: '100%',
-}
-const inputErrorStyle: Record<string, string> = {
-  fontSize: '12px',
-  color: 'var(--dsw-alias-danger, #e5484d)',
-  margin: '4px 0 0',
-}
-const resetButtonStyle: Record<string, string> = {
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--dsw-alias-label-secondary, rgba(128,128,128,.8))',
-  fontSize: '12px',
-  cursor: 'pointer',
-  padding: '0 4px',
-  textDecoration: 'underline',
-}
-const footerStyle: Record<string, string> = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-  paddingTop: '4px',
-  borderTop: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.15))',
-}
-const statusStyle: Record<string, string> = {
-  fontSize: '12px',
-  color: 'var(--dsw-alias-label-tertiary, rgba(128,128,128,.8))',
-  marginRight: 'auto',
-}
-const noticeStyle: Record<string, string> = {
-  fontSize: '12px',
-  lineHeight: '1.5',
-  padding: '8px 10px',
-  borderRadius: '8px',
-  border: '1px solid var(--dsw-alias-warning-border, rgba(217,119,6,.4))',
-  background: 'var(--dsw-alias-warning-fill, rgba(217,119,6,.1))',
-  color: 'var(--dsw-alias-label-secondary, inherit)',
-}
-const buttonStyle: Record<string, string> = {
-  padding: '6px 14px',
-  borderRadius: '8px',
-  border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))',
-  background: 'var(--dsw-alias-button-elevated-fill, transparent)',
-  color: 'var(--dsw-alias-label-primary, inherit)',
-  fontSize: '13px',
-  cursor: 'pointer',
-}
-const buttonPrimaryStyle: Record<string, string> = {
-  ...buttonStyle,
-  borderColor: 'transparent',
-  background: 'var(--dsw-alias-accent, #3b82f6)',
-  color: 'var(--dsw-alias-label-on-accent, #fff)',
-}
-const buttonDisabledStyle: Record<string, string | number> = {
-  opacity: 0.5,
-  cursor: 'default',
-}
+const CARD_CSS = `
+.tavily-card { list-style: none; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-layer-3); transition: border-color .16s, background .16s; }
+.tavily-card:hover { border-color: var(--dsw-alias-label-dimmed); }
+.tavily-cardOpen { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
+.tavily-header { width: 100%; appearance: none; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; }
+.tavily-header:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+.tavily-headText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tavily-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+.tavily-description { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+.tavily-chevron { flex: none; color: var(--dsw-alias-label-tertiary); transition: transform .16s; }
+.tavily-chevronOpen { transform: rotate(180deg); }
+.tavily-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding-bottom: 8px; }
+.tavily-readOnly { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+.tavily-pending { flex: none; border-radius: 999px; padding: 1px 8px; font-size: 11px; line-height: 17px; font-weight: 500; white-space: nowrap; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); }
+.tavily-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2); }
+.tavily-failed { flex: 1; min-width: 0; margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-error); }
+.tavily-recommend, .tavily-discard, .tavily-save { appearance: none; border: 1px solid transparent; border-radius: 8px; padding: 5px 14px; font: inherit; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.tavily-recommend, .tavily-discard { border-color: var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary); }
+.tavily-recommend:hover:not(:disabled), .tavily-discard:hover:not(:disabled) { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-dimmed); }
+.tavily-save { background: var(--dsw-alias-label-primary); color: var(--dsw-alias-bg-layer-3); }
+.tavily-recommend:disabled, .tavily-discard:disabled, .tavily-save:disabled { opacity: 0.4; cursor: default; }
+.tavily-recommend:focus-visible, .tavily-discard:focus-visible, .tavily-save:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.tavily-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
+.tavily-field + .tavily-field { border-top: 1px solid var(--dsw-alias-border-l2); }
+.tavily-head { display: flex; align-items: center; gap: 8px; }
+.tavily-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary); }
+.tavily-badges { display: inline-flex; align-items: center; gap: 8px; }
+.tavily-badge { border-radius: 999px; padding: 1px 8px; font-size: 11px; line-height: 17px; white-space: nowrap; font-weight: 500; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); }
+.tavily-badgeMuted { border-radius: 999px; padding: 1px 8px; font-size: 11px; line-height: 17px; white-space: nowrap; color: var(--dsw-alias-label-tertiary); }
+.tavily-reset { border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.tavily-reset:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
+.tavily-reset:disabled { cursor: default; }
+.tavily-input { height: 34px; padding: 0 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-3); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary); }
+.tavily-input:focus-visible { outline: none; border-color: var(--dsw-alias-brand-primary); }
+.tavily-input:disabled { color: var(--dsw-alias-label-tertiary); cursor: default; }
+.tavily-inputInvalid { border-color: var(--dsw-alias-label-error); }
+.tavily-invalid { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-error); }
+.tavily-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+.tavily-checkbox { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--dsw-alias-brand-primary); cursor: pointer; }
+.tavily-checkbox:disabled { cursor: default; }
+.tavily-notice { margin: 12px 0 0; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-warning-border, rgba(217,119,6,.4)); background: var(--dsw-alias-warning-fill, rgba(217,119,6,.1)); color: var(--dsw-alias-label-secondary); }
+`
 
-/** The card shell: title, description, fields, and the save/discard footer. */
-/** Down chevron, drawn inline (primitives icons are not public exports). */
-function ChevronIcon() {
-  return createElement('svg', {
-    width: 14,
-    height: 14,
-    viewBox: '0 0 16 16',
-    fill: 'none',
-    'aria-hidden': true,
-  },
-    createElement('path', {
-      d: 'M4 6l4 4 4-4',
-      stroke: 'currentColor',
-      strokeWidth: 1.5,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-    }),
-  )
-}
-
-/** The card shell: a whole-row toggle header (official pattern) + collapsible body. */
+/**
+ * The card shell, mirroring the official PluginCard: a whole-row toggle
+ * header, a body that renders only while expanded, and a save/discard
+ * footer. Collapse follows the official behavior — a card closes itself
+ * after the Host confirms a save, while a rejected write keeps its
+ * diagnostics and retained drafts visible. The recommend button is this
+ * card's one addition and takes the discard (secondary) styling.
+ */
 function CardShell(props: {
   t: (key: string) => string
   title: string
@@ -476,59 +358,72 @@ function CardShell(props: {
 }) {
   const { t, title, description, state, onApplyRecommended, onSave, onDiscard, children } = props
   const [open, setOpen] = useState(false)
-  const [hovered, setHovered] = useState(false)
-  const saveDisabled = !state.dirty || state.invalid || state.saving || !state.writable
-  const discardDisabled = (!state.dirty && !state.failed) || state.saving
-  return createElement('li', { style: cardStyle },
+  const saveStarted = useRef(false)
+  useEffect(() => {
+    if (state.saving) {
+      saveStarted.current = true
+      return
+    }
+    if (!saveStarted.current) return
+    saveStarted.current = false
+    if (!state.dirty && !state.failed) setOpen(false)
+  }, [state.dirty, state.failed, state.saving])
+  if (!state.available) return null
+  const blocked = !state.dirty || state.invalid || state.saving
+  return createElement('li', { className: `tavily-card${open ? ' tavily-cardOpen' : ''}` },
+    createElement('style', null, CARD_CSS),
     createElement('button', {
       type: 'button',
-      style: { ...headerButtonStyle, ...(hovered ? headerHoverStyle : {}) },
+      className: 'tavily-header',
       'aria-expanded': open,
       'aria-label': `${t(open ? 'collapse' : 'expand')}: ${title}`,
-      onMouseEnter: () => { setHovered(true) },
-      onMouseLeave: () => { setHovered(false) },
       onClick: () => { setOpen(!open) },
     },
-      createElement('span', { style: headTextStyle },
-        createElement('span', { style: cardTitleStyle }, title),
-        createElement('span', { style: cardDescriptionStyle }, description),
+      createElement('span', { className: 'tavily-headText' },
+        createElement('span', { className: 'tavily-name' }, title),
+        createElement('span', { className: 'tavily-description' }, description),
       ),
       state.dirty
-        ? createElement('span', { style: pendingBadgeStyle }, t('unsaved'))
+        ? createElement('span', { className: 'tavily-pending' }, t('unsaved'))
         : null,
-      createElement('span', { style: { ...chevronStyle, ...(open ? chevronOpenStyle : {}) } },
-        createElement(ChevronIcon, null),
-      ),
+      createElement(IconChevronDownOutline14, {
+        className: `tavily-chevron${open ? ' tavily-chevronOpen' : ''}`,
+      }),
     ),
-    open ? [
-      ...children,
-      createElement('div', { style: footerStyle },
-        state.failed
-          ? createElement('span', { style: statusStyle }, t('saveFailed'))
-          : createElement('span', { style: statusStyle }, ''),
-        createElement('button', {
-          type: 'button',
-          style: buttonStyle,
-          onClick: onApplyRecommended,
-        }, t('recommend')),
-        createElement('button', {
-          type: 'button',
-          style: { ...buttonStyle, ...(discardDisabled ? buttonDisabledStyle : {}) },
-          disabled: discardDisabled,
-          onClick: onDiscard,
-        }, t('discard')),
-        createElement('button', {
-          type: 'button',
-          style: { ...buttonPrimaryStyle, ...(saveDisabled ? buttonDisabledStyle : {}) },
-          disabled: saveDisabled,
-          onClick: onSave,
-        }, state.saving ? t('saving') : t('save')),
-      ),
-    ] : null,
+    open
+      ? createElement('div', { className: 'tavily-body' },
+        !state.writable
+          ? createElement('p', { className: 'tavily-readOnly', role: 'status' }, t('readOnly'))
+          : null,
+        ...children,
+        createElement('div', { className: 'tavily-footer' },
+          state.failed
+            ? createElement('p', { className: 'tavily-failed', role: 'status' }, t('saveFailed'))
+            : null,
+          createElement('button', {
+            type: 'button',
+            className: 'tavily-recommend',
+            onClick: onApplyRecommended,
+          }, t('recommend')),
+          createElement('button', {
+            type: 'button',
+            className: 'tavily-discard',
+            disabled: !state.dirty || state.saving,
+            onClick: onDiscard,
+          }, t('discard')),
+          createElement('button', {
+            type: 'button',
+            className: 'tavily-save',
+            disabled: blocked,
+            onClick: onSave,
+          }, state.saving ? t('saving') : t('save')),
+        ),
+      )
+      : null,
   )
 }
 
-/** Text input row (replaces the official ValueField). */
+/** Text input row, mirroring the official ValueField. */
 function TextRow(props: {
   id: string
   label: string
@@ -543,29 +438,37 @@ function TextRow(props: {
   onReset: () => void
 }) {
   const { id, label, hint, numeric, disabled, text, overridden, invalid, t, onEdit, onReset } = props
-  return createElement('div', { style: rowStyle },
-    createElement('label', { htmlFor: id, style: labelStyle },
-      label,
-      overridden ? createElement('span', { style: badgeStyle }, t('overridden')) : null,
+  return createElement('div', { className: 'tavily-field' },
+    createElement('div', { className: 'tavily-head' },
+      createElement('label', { className: 'tavily-label', htmlFor: id }, label),
+      overridden
+        ? createElement('span', { className: 'tavily-badges' },
+          createElement('span', { className: 'tavily-badge' }, t('overridden')),
+          createElement('button', {
+            type: 'button',
+            className: 'tavily-reset',
+            disabled,
+            onClick: onReset,
+          }, t('reset')),
+        )
+        : null,
     ),
     createElement('input', {
       id,
-      type: numeric ? 'number' : 'text',
-      disabled,
+      className: invalid ? 'tavily-input tavily-inputInvalid' : 'tavily-input',
+      type: 'text',
+      ...(numeric ? { inputMode: 'numeric' as const } : {}),
+      ...(invalid ? { 'aria-invalid': 'true' } : {}),
       value: text,
+      disabled,
       onChange: (event: { target: { value: string } }) => onEdit(event.target.value),
-      style: invalid ? inputInvalidStyle : inputStyle,
-      'aria-invalid': invalid,
     }),
-    invalid ? createElement('p', { style: inputErrorStyle }, t('invalidNumber')) : null,
-    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
-    overridden
-      ? createElement('button', { type: 'button', style: resetButtonStyle, onClick: onReset }, t('reset'))
-      : null,
+    createElement('p', { className: invalid ? 'tavily-invalid' : 'tavily-hint' },
+      invalid ? t('invalidNumber') : hint),
   )
 }
 
-/** Secret input row (replaces the official SecretField). */
+/** Secret input row, mirroring the official SecretField. */
 function SecretRow(props: {
   id: string
   label: string
@@ -577,26 +480,27 @@ function SecretRow(props: {
   onEdit: (text: string) => void
 }) {
   const { id, label, hint, disabled, text, configured, stateLabel, onEdit } = props
-  return createElement('div', { style: rowStyle },
-    createElement('label', { htmlFor: id, style: labelStyle },
-      label,
-      createElement('span', { style: badgeStyle }, stateLabel),
+  return createElement('div', { className: 'tavily-field' },
+    createElement('div', { className: 'tavily-head' },
+      createElement('label', { className: 'tavily-label', htmlFor: id }, label),
+      createElement('span', { className: 'tavily-badges' },
+        createElement('span', { className: configured ? 'tavily-badge' : 'tavily-badgeMuted' }, stateLabel),
+      ),
     ),
     createElement('input', {
       id,
+      className: 'tavily-input',
       type: 'password',
-      disabled,
-      placeholder: configured ? '••••••••' : '',
-      value: text,
-      onChange: (event: { target: { value: string } }) => onEdit(event.target.value),
-      style: inputStyle,
       autoComplete: 'off',
+      value: text,
+      disabled,
+      onChange: (event: { target: { value: string } }) => onEdit(event.target.value),
     }),
-    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
+    createElement('p', { className: 'tavily-hint' }, hint),
   )
 }
 
-/** One row of a select control. */
+/** One row of a select control, styled as an official field. */
 function SelectRow(props: {
   id: string
   label: string
@@ -609,26 +513,30 @@ function SelectRow(props: {
   onChange: (value: string) => void
 }) {
   const { id, label, hint, disabled, value, options, overridden, t, onChange } = props
-  return createElement('div', { style: rowStyle },
-    createElement('label', { htmlFor: id, style: labelStyle },
-      label,
-      overridden ? createElement('span', { style: badgeStyle }, t('overridden')) : null,
+  return createElement('div', { className: 'tavily-field' },
+    createElement('div', { className: 'tavily-head' },
+      createElement('label', { className: 'tavily-label', htmlFor: id }, label),
+      overridden
+        ? createElement('span', { className: 'tavily-badges' },
+          createElement('span', { className: 'tavily-badge' }, t('overridden')),
+        )
+        : null,
     ),
     createElement('select', {
       id,
+      className: 'tavily-input',
       disabled,
       value: typeof value === 'string' ? value : '',
       onChange: (event: { target: { value: string } }) => onChange(event.target.value),
-      style: selectStyle,
     },
       createElement('option', { value: '' }, ''),
       ...options.map((option) => createElement('option', { key: option, value: option }, option)),
     ),
-    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
+    createElement('p', { className: 'tavily-hint' }, hint),
   )
 }
 
-/** One row of a checkbox control. */
+/** One row of a checkbox control, styled as an official field. */
 function BooleanRow(props: {
   id: string
   label: string
@@ -640,19 +548,24 @@ function BooleanRow(props: {
   onChange: (checked: boolean) => void
 }) {
   const { id, label, hint, disabled, checked, overridden, t, onChange } = props
-  return createElement('div', { style: rowStyle },
-    createElement('label', { htmlFor: id, style: checkboxLabelStyle },
+  return createElement('div', { className: 'tavily-field' },
+    createElement('div', { className: 'tavily-head' },
       createElement('input', {
         id,
         type: 'checkbox',
+        className: 'tavily-checkbox',
         disabled,
         checked,
         onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked),
       }),
-      createElement('span', null, label),
-      overridden ? createElement('span', { style: badgeStyle }, t('overridden')) : null,
+      createElement('label', { className: 'tavily-label', htmlFor: id }, label),
+      overridden
+        ? createElement('span', { className: 'tavily-badges' },
+          createElement('span', { className: 'tavily-badge' }, t('overridden')),
+        )
+        : null,
     ),
-    hint === '' ? null : createElement('p', { style: hintStyle }, hint),
+    createElement('p', { className: 'tavily-hint' }, hint),
   )
 }
 
@@ -673,7 +586,7 @@ function TavilyCard(props: TavilyCardProps) {
     children: [
       state.apiKey.configured
         ? null
-        : createElement('div', { style: noticeStyle, role: 'status' }, t('keylessNotice')),
+        : createElement('div', { className: 'tavily-notice', role: 'status' }, t('keylessNotice')),
       createElement(SecretRow, {
         id: 'plugin-config-tavily-key',
         label: t('apiKey'),
@@ -804,7 +717,7 @@ export function apply(ctx: ClientContext): void {
   ctx.locale.register(LOCALE_NS, { zh, en })
   const controller = new TavilyCardController(
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
-    ctx.connection.api,
+    ctx.remote.credentials,
   )
   ctx.effect(() => ctx.remote.$on('credentials/reference-updated', (ref) => {
     controller.refreshCredential(ref)

@@ -9,6 +9,14 @@ export default defineConfig({
       '@deepseek-ai/dsh-client-runtime/client': fileURLToPath(
         new URL('./tests/stubs/runtime-client.ts', import.meta.url),
       ),
+      // Same for react: the card module imports it at scope; controller tests
+      // never render, so a minimal stub stands in.
+      react: fileURLToPath(new URL('./tests/stubs/react.ts', import.meta.url)),
+      // The native primitives icon (like the official cards render) resolves
+      // from the shell's static table; tests stub it.
+      '@deepseek-ai/dsh-client-ui-primitives': fileURLToPath(
+        new URL('./tests/stubs/ui-primitives.ts', import.meta.url),
+      ),
     },
   },
   test: {

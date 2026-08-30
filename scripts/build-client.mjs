@@ -27,6 +27,7 @@ const EXTERNALS = [
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-ui-primitives',
 ]
 
 // esbuild resolves from `node_modules` on a normal install; the workspace
