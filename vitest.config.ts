@@ -6,8 +6,8 @@ export default defineConfig({
     alias: {
       // The client bundle's runtime import only exists inside the DSH Web
       // shell; tests resolve it to a local stub with the same surface.
-      '@deepseek-ai/dsh-client-runtime/client': fileURLToPath(
-        new URL('./tests/stubs/runtime-client.ts', import.meta.url),
+      '@deepseek-ai/dsh-client-store': fileURLToPath(
+        new URL('./tests/stubs/client-store.ts', import.meta.url),
       ),
       // Same for react: the card module imports it at scope; controller tests
       // never render, so a minimal stub stands in.

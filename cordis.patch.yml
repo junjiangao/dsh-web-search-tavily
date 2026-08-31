@@ -1,4 +1,4 @@
-# `@deepseek-ai/dsh-web-search-tavily` bundle patch: registers the Tavily search provider.
+# `@junjiangao/dsh-web-search-tavily` bundle patch: registers the Tavily search provider.
 #
 # This bundle only inserts its own plugin row. Selecting tavily as the active
 # search provider stays a user-owned `web` seam decision: a patch row replaces
@@ -16,4 +16,4 @@
 
 - insert:
     - id: web-search-tavily
-      name: '@deepseek-ai/dsh-web-search-tavily'
+      name: '@junjiangao/dsh-web-search-tavily'

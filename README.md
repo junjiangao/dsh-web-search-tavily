@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-web-search-tavily
+# @junjiangao/dsh-web-search-tavily
 
 English | [中文](README.zh.md)
 
@@ -83,19 +83,19 @@ Key resolution order: literal `apiKey` → `dsh-credentials` (`apiKeyEnv` ref) �
 ```yaml
 # With key (env)
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
   config:
     apiKeyEnv: TAVILY_API_KEY
 
 # With key (literal — prefer credentials/env)
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
   config:
     apiKey: !!js process.env.TAVILY_API_KEY
 
 # Keyless — no key anywhere, the provider falls back to keyless mode
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
 ```
 
 ## Keyless mode
@@ -104,7 +104,7 @@ When every key source is empty, requests carry no `Authorization`, send `x-tavil
 
 ## Settings UI and credentials
 
-`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = settingsNamespace('web-search-tavily')` installs the configuration as a settings section, so the web settings page can edit every field above and changes apply to the next search without re-registration. The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in settings is supported but persists in the settings document — prefer credentials or the environment.
+`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'` (a plain namespace constant) installs the configuration as a settings section through the dsh 0.1.2 settings service (`settings.installSection`, gated by `ctx.inject(['settings'], ...)`), so the web settings page can edit every field above and changes apply to the next search without re-registration. The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in settings is supported but persists in the settings document — prefer credentials or the environment.
 
 ### Client settings card
 

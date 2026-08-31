@@ -40,8 +40,8 @@ declare module 'react/jsx-runtime' {
   export function jsxs(type: any, props: any, key?: any): any
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
-  /** Minimal snapshot-store face (the runtime's `createSnapshotStore`). */
+declare module '@deepseek-ai/dsh-client-store' {
+  /** Minimal snapshot-store face (the store's `createSnapshotStore`). */
   export interface SnapshotStore<T> {
     getSnapshot(): T
     subscribe(listener: () => void): () => void
@@ -83,16 +83,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-declare module '@deepseek-ai/dsh-client-ui-settings' {
-  /** One namespace's view as served by `settings.describe`. */
-  export interface SettingsNamespaceView {
-    ns: string
-    value?: Record<string, unknown>
-    base?: Record<string, unknown>
-    user?: Record<string, unknown> | null
-    revision?: number
-  }
-  /** Snapshot shape of a bound settings scope. */
+declare module '@deepseek-ai/dsh-client-ui-settings/client' {
+  /** Snapshot shape of a bound settings scope (dsh 0.1.2 client contract). */
   export interface SettingsScopeSnapshot {
     status: 'loading' | 'ready' | 'unavailable'
     value?: Record<string, unknown>
@@ -108,16 +100,10 @@ declare module '@deepseek-ai/dsh-client-ui-settings' {
     subscribe(listener: () => void): () => void
     set(field: string, value: unknown): Promise<void>
     unset(field: string): Promise<void>
-    dispose(): Promise<void>
   }
   /** The `settingsScope` cordis service injected into client plugin contexts. */
   export interface SettingsScopeService {
     bind(spec: { namespace: string }): SettingsScope
-    describe(): {
-      getSnapshot(): { view?: { namespaces: SettingsNamespaceView[]; writable: boolean } }
-      subscribe(listener: () => void): () => void
-      ensure(): void
-    }
   }
 }
 

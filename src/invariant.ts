@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-web-search-tavily`.
- * @module @deepseek-ai/dsh-web-search-tavily/invariant
+ * Package-owned invariant companion for `@junjiangao/dsh-web-search-tavily`.
+ * @module @junjiangao/dsh-web-search-tavily/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-web-search-tavily'
+const PACKAGE_NAME = '@junjiangao/dsh-web-search-tavily'
 
 /** Cordis companion plugin name. */
 export const name = 'web-search-tavily-invariant'

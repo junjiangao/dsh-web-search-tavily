@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { FormModel, numberSpec, textSpec } from '../client-src/form.ts'
 import type { CredentialHooks, FieldSpec } from '../client-src/form.ts'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** In-memory settings scope doubling the host-backed one. */
 class FakeScope implements SettingsScope {
@@ -37,6 +37,14 @@ class FakeScope implements SettingsScope {
     delete value[field]
     this.snapshot = { ...this.snapshot, user, value, revision: this.snapshot.revision! + 1 }
     this.notify()
+  }
+  async mutate(ops: readonly { op: 'set' | 'unset'; path: string[]; value?: unknown }[]) {
+    for (const op of ops) {
+      if (op.path.length !== 1) continue
+      const field = op.path[0]!
+      if (op.op === 'set') await this.set(field, op.value)
+      else await this.unset(field)
+    }
   }
   async dispose() { this.listeners.clear() }
   private notify() { for (const listener of this.listeners) listener() }

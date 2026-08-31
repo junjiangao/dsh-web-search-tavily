@@ -11,9 +11,9 @@
  * discriminant union instead of the text-only conversion pair.
  */
 
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** A control whose value is edited as free text (string or number fields). */
 export interface TextSpec {

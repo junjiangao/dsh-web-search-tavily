@@ -25,7 +25,7 @@ describe('standard bundle shape', () => {
   it('inserts only the web-search-tavily row and never overrides the web row', () => {
     const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
     expect(patch).toContain('id: web-search-tavily')
-    expect(patch).toContain("name: '@deepseek-ai/dsh-web-search-tavily'")
+    expect(patch).toContain("name: '@junjiangao/dsh-web-search-tavily'")
     const webOverrides = patch.split('\n').filter(line => /^\s*- id: web\s*$/.test(line))
     expect(webOverrides).toEqual([])
   })
@@ -38,7 +38,7 @@ describe('web-search-tavily invariant companion', () => {
     const dispose = await invariantPlugin.apply(ctx)
     expect(register).toHaveBeenCalledOnce()
     const [packageName, installer] = register.mock.calls[0] as unknown as [string, () => void]
-    expect(packageName).toBe('@deepseek-ai/dsh-web-search-tavily')
+    expect(packageName).toBe('@junjiangao/dsh-web-search-tavily')
     installer()
     dispose()
   })

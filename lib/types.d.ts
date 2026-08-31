@@ -4,7 +4,7 @@
  * a flat `results[]` with per-result content, and (when requested) images and
  * usage metadata that this provider requests but the web seam does not surface.
  *
- * @module @deepseek-ai/dsh-web-search-tavily/types
+ * @module @junjiangao/dsh-web-search-tavily/types
  */
 /** Request body sent to Tavily's search endpoint (official parameter surface). */
 export interface TavilySearchRequest {

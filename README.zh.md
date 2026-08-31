@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-web-search-tavily
+# @junjiangao/dsh-web-search-tavily
 
 [English](README.md) | 中文
 
@@ -83,19 +83,19 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 ```yaml
 # 有 key（环境变量）
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
   config:
     apiKeyEnv: TAVILY_API_KEY
 
 # 有 key（字面量——优先凭据服务/环境变量）
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
   config:
     apiKey: !!js process.env.TAVILY_API_KEY
 
 # Keyless——任何来源都无 key 时自动降级
 - id: web-search-tavily
-  name: '@deepseek-ai/dsh-web-search-tavily'
+  name: '@junjiangao/dsh-web-search-tavily'
 ```
 
 ## Keyless 模式
@@ -104,7 +104,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 ## 设置界面与凭据
 
-`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = settingsNamespace('web-search-tavily')` 把配置注册为设置段：web 设置页可编辑上表全部字段，修改后下一次搜索即生效，无需重注册。推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。设置文档中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
+`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`（普通命名空间常量）通过 dsh 0.1.2 设置服务把配置注册为设置段（`settings.installSection`，由 `ctx.inject(['settings'], ...)` 门控）：web 设置页可编辑上表全部字段，修改后下一次搜索即生效，无需重注册。推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。设置文档中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
 ### 客户端设置卡片
 

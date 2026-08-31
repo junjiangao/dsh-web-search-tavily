@@ -1,5 +1,5 @@
 /**
- * Test stub for `@deepseek-ai/dsh-client-runtime/client` — the real module
+ * Test stub for `@deepseek-ai/dsh-client-store` — the real module
  * only exists inside the DSH Web shell. The stub implements the exact
  * snapshot-store surface the client code uses.
  */

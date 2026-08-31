@@ -1,19 +1,21 @@
 /**
- * `@deepseek-ai/dsh-web-search-tavily`: registers a Tavily-backed
+ * `@junjiangao/dsh-web-search-tavily`: registers a Tavily-backed
  * `WebSearchProvider` with `ctx.web` and exposes its configuration as a
  * settings section. A function/namespace plugin (NOT a default-export service):
  * it registers INTO the seam's provider registry, exactly as
  * `@deepseek-ai/dsh-web-search-deepseek` registers a provider into `ctx.web`.
  * Without a resolved API key the provider runs in Tavily's keyless mode.
  *
- * @module @deepseek-ai/dsh-web-search-tavily
+ * @module @junjiangao/dsh-web-search-tavily
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+// Type-only imports keep the seam's cordis service augmentations visible
+// (`ctx.web`, `ctx.settings`) without adding runtime edges.
+import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-web'
 import {
   TAVILY_DEFAULT_BASE_URL,
@@ -135,7 +137,7 @@ export const Config: z<Config> = z.object({
 })
 
 /** Settings namespace carrying this provider's endpoint, options, and key reference. */
-export const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = settingsNamespace('web-search-tavily')
+export const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /**
  * Project one resolved section into the options the provider serves its next
@@ -191,13 +193,20 @@ function resolveOptions(ctx: Context, config: Config): TavilySearchProviderOptio
 /** Register the Tavily search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
   let current: () => Config = () => config
-  installSettingsSection(ctx, WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, Config, config, {
-    setSource: (source) => {
-      current = source
-    },
-    // The registration carries no resolved value: the provider projects the
-    // section per search, so a committed change needs no re-registration.
-    onChange: () => {},
+  // dsh 0.1.2+ owns optional-settings wiring on the settings service:
+  // `installSection` registers the namespace with `config` as its composition
+  // base while a settings provider exists and falls back to the entry when it
+  // detaches. The `ctx.inject` gate keeps the registration scoped to a live
+  // settings service, so a deployment without one skips all of this.
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, Config, config, {
+      setSource: (source) => {
+        current = source
+      },
+      // The registration carries no resolved value: the provider projects the
+      // section per search, so a committed change needs no re-registration.
+      onChange: () => {},
+    })
   })
   ctx.web.registerSearchProvider(new TavilySearchProvider(() => resolveOptions(ctx, current())))
 }

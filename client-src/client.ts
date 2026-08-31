@@ -1,5 +1,5 @@
 /**
- * Client face of `@deepseek-ai/dsh-web-search-tavily`.
+ * Client face of `@junjiangao/dsh-web-search-tavily`.
  *
  * Registers the Tavily card into the settings "plugins" section's
  * configurable tab (`settings.plugin.item`, keyed by the settings namespace),
@@ -10,8 +10,9 @@
  * save.
  *
  * This bundle runs inside the DSH Web shell: every import resolves through
- * the shell's static module table or the boot graph (`dsh.client.external`),
- * and the bundle itself is a factory-form module the module loader invokes.
+ * the shell's static module table (`react`, primitives, the client store) or
+ * the boot graph, and the bundle itself is a factory-form module the module
+ * loader invokes.
  *
  * Card chrome mirrors the official plugin-card exactly: the disclosure
  * header (title + description + unsaved badge + the native 14px primitives
@@ -28,8 +29,8 @@ import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SlotsService } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocaleService } from '@deepseek-ai/dsh-client-locale'
-import type { SettingsScope, SettingsScopeService } from '@deepseek-ai/dsh-client-ui-settings'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeService } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { FormModel, numberSpec, textSpec } from './form.ts'
 import type { FieldSpec, ShellState } from './form.ts'
 import { en, LOCALE_NS, zh } from './locales.ts'
@@ -41,19 +42,18 @@ export const name = 'web-search-tavily'
 export const SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /**
- * Services the client face needs from the shell. Both faces exist on every
- * deployment line: 0.1.1-rc.x serves the credentials domain on
- * `connection.api`, 0.1.2+ mounts it as the `remote.credentials` namespace.
- * Which one answers is probed per call, never assumed at activation.
+ * Services the client face needs from the shell. dsh 0.1.2 mounts the
+ * credentials domain as the `remote.credentials` namespace (typed subservice
+ * of the `remote` assembly); it mounts asynchronously, so the access itself
+ * is probed per call, never assumed at activation.
  */
-export const inject = ['slots', 'locale', 'settingsScope', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'settingsScope', 'remote', 'remote.credentials']
 
 /** The settings namespace this card binds. */
 interface ClientContext extends Context {
   slots: SlotsService
   locale: LocaleService
   settingsScope: SettingsScopeService
-  connection: ConnectionService
   remote: RemoteService
 }
 
@@ -68,8 +68,11 @@ export interface CredentialView {
 }
 
 /**
- * Normalized credentials face the controller consumes, whichever wire face
- * answers: the deployment's contract is probed per call, never assumed.
+ * Normalized credentials face the controller consumes: the deployment's
+ * `remote.credentials` namespace, positional arguments, RemoteResult envelope.
+ * The adapter never throws — every failure (transport or business) comes back
+ * as `{ ok: false, message? }` so the card can surface the host's own refusal
+ * text.
  */
 export interface CredentialsFace {
   describe(refs: string[]): Promise<{
@@ -81,28 +84,9 @@ export interface CredentialsFace {
 }
 
 /**
- * Wire face of dsh 0.1.1-rc.x deployments (`connection.api.credentials`, the
- * same face the official settings cards of that line consume): object
- * arguments, responses carry the RPC envelope `{ result: { ok, value | error } }`,
- * and transport failures are folded into that envelope rather than thrown.
- */
-export interface LegacyCredentialsApi {
-  describe(request: { refs: string[] }): Promise<{
-    result:
-      | { ok: true; value: { credentials: Record<string, CredentialView> } }
-      | { ok: false; error?: { message?: string } }
-  }>
-  set(request: { ref: string; value: string }): Promise<{
-    result: { ok: true } | { ok: false; error?: { message?: string } }
-  }>
-}
-export interface ConnectionService { api: { credentials: LegacyCredentialsApi } }
-
-/**
  * Wire face of dsh 0.1.2+ deployments (`remote.credentials`): positional
  * arguments and the RemoteResult envelope. The namespace mounts
- * asynchronously, so the access itself can answer `undefined` for a while —
- * and on 0.1.1-rc.x deployments it never mounts at all.
+ * asynchronously, so the access itself can answer `undefined` for a while.
  */
 export interface ModernCredentialsApi {
   describe(refs: string[]): Promise<
@@ -205,19 +189,17 @@ function refusal(message: string | undefined): { ok: false; message?: string } {
 /**
  * Controller: binds the namespace scope, owns the form, and watches the
  * credential the section references — the same domain the official
- * web-search card of the deployment's line consumes. The wire face is
- * probed per call: dsh 0.1.1-rc.x serves `connection.api.credentials`
- * (object arguments, `{ result }` envelope), 0.1.2+ mounts
- * `remote.credentials` (positional, RemoteResult). Resolving lazily also
- * covers the 0.1.2 namespace mounting after this plugin activates. The key
- * state comes from `credentials.describe` — a key stored in the credential
- * store, a launch-environment export, or a stored literal all report as
- * configured; a staged key is written through the credentials domain.
+ * web-search card consumes on dsh 0.1.2 (`remote.credentials`: positional
+ * arguments, RemoteResult envelope). The face resolves per call because the
+ * namespace mounts asynchronously, possibly after this plugin activates. The
+ * key state comes from `credentials.describe` — a key stored in the
+ * credential store, a launch-environment export, or a stored literal all
+ * report as configured; a staged key is written through the credentials
+ * domain.
  */
 export class TavilyCardController {
   private readonly scope: SettingsScope
-  private readonly legacyFace: () => LegacyCredentialsApi | undefined
-  private readonly modernFace: () => ModernCredentialsApi | undefined
+  private readonly credentialsFace: () => ModernCredentialsApi | undefined
   private readonly retry: { delayMs: number; maxAttempts: number }
   private readonly form: FormModel
   private readonly store: SnapshotStore<TavilyCardState>
@@ -226,15 +208,13 @@ export class TavilyCardController {
 
   constructor(
     scope: SettingsScope,
-    legacyFace: () => LegacyCredentialsApi | undefined,
-    modernFace: () => ModernCredentialsApi | undefined,
+    credentialsFace: () => ModernCredentialsApi | undefined,
     retry: { delayMs: number; maxAttempts: number } = {
       delayMs: READ_RETRY_DELAY_MS, maxAttempts: READ_RETRY_MAX_ATTEMPTS,
     },
   ) {
     this.scope = scope
-    this.legacyFace = legacyFace
-    this.modernFace = modernFace
+    this.credentialsFace = credentialsFace
     this.retry = retry
     this.form = new FormModel(scope, FORM_FIELDS, {
       configured: () => this.credentialConfigured(),
@@ -247,59 +227,34 @@ export class TavilyCardController {
   }
 
   /**
-   * Normalize whichever wire face this deployment serves onto
-   * {@link CredentialsFace}. The adapter never throws: every failure —
-   * transport or business — comes back as `{ ok: false, message? }`, so the
-   * card can surface the host's own refusal text.
+   * Normalize `remote.credentials` onto {@link CredentialsFace}. The adapter
+   * never throws: every failure — transport or business — comes back as
+   * `{ ok: false, message? }`, so the card can surface the host's own refusal
+   * text.
    */
   private resolveFace(): CredentialsFace | undefined {
-    const legacy = this.legacyFace()
-    if (legacy !== undefined) {
-      return {
-        describe: async (refs) => {
-          try {
-            const response = await legacy.describe({ refs })
-            return response.result.ok
-              ? { ok: true, views: response.result.value.credentials }
-              : refusal(response.result.error?.message)
-          } catch (error) {
-            return refusal(error instanceof Error ? error.message : String(error))
-          }
-        },
-        set: async (ref, value) => {
-          try {
-            const response = await legacy.set({ ref, value })
-            return response.result.ok ? { ok: true } : refusal(response.result.error?.message)
-          } catch (error) {
-            return refusal(error instanceof Error ? error.message : String(error))
-          }
-        },
-      }
+    const modern = this.credentialsFace()
+    if (modern === undefined) return undefined
+    return {
+      describe: async (refs) => {
+        try {
+          const response = await modern.describe(refs)
+          return response.ok
+            ? { ok: true, views: response.value }
+            : refusal(response.error?.message)
+        } catch (error) {
+          return refusal(error instanceof Error ? error.message : String(error))
+        }
+      },
+      set: async (ref, value) => {
+        try {
+          const response = await modern.set(ref, value)
+          return response.ok ? { ok: true } : refusal(response.error?.message)
+        } catch (error) {
+          return refusal(error instanceof Error ? error.message : String(error))
+        }
+      },
     }
-    const modern = this.modernFace()
-    if (modern !== undefined) {
-      return {
-        describe: async (refs) => {
-          try {
-            const response = await modern.describe(refs)
-            return response.ok
-              ? { ok: true, views: response.value }
-              : refusal(response.error?.message)
-          } catch (error) {
-            return refusal(error instanceof Error ? error.message : String(error))
-          }
-        },
-        set: async (ref, value) => {
-          try {
-            const response = await modern.set(ref, value)
-            return response.ok ? { ok: true } : refusal(response.error?.message)
-          } catch (error) {
-            return refusal(error instanceof Error ? error.message : String(error))
-          }
-        },
-      }
-    }
-    return undefined
   }
 
   private projection(): TavilyCardState {
@@ -856,11 +811,9 @@ export function apply(ctx: ClientContext): void {
   ctx.locale.register(LOCALE_NS, { zh, en })
   const controller = new TavilyCardController(
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
-    // Both faces resolve per call: the deployment line decides which exists
-    // (0.1.1-rc.x: connection.api; 0.1.2+: remote.credentials, mounted
-    // asynchronously after this plugin activates).
-    () => ctx.connection?.api?.credentials,
-    () => ctx.remote?.credentials,
+    // The credentials namespace mounts asynchronously after this plugin
+    // activates, so the access resolves per call rather than at apply time.
+    () => ctx.remote.credentials,
   )
   ctx.effect(() => ctx.remote.$on('credentials/reference-updated', (ref) => {
     controller.refreshCredential(ref)

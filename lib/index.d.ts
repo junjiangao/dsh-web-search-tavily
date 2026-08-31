@@ -1,12 +1,12 @@
 /**
- * `@deepseek-ai/dsh-web-search-tavily`: registers a Tavily-backed
+ * `@junjiangao/dsh-web-search-tavily`: registers a Tavily-backed
  * `WebSearchProvider` with `ctx.web` and exposes its configuration as a
  * settings section. A function/namespace plugin (NOT a default-export service):
  * it registers INTO the seam's provider registry, exactly as
  * `@deepseek-ai/dsh-web-search-deepseek` registers a provider into `ctx.web`.
  * Without a resolved API key the provider runs in Tavily's keyless mode.
  *
- * @module @deepseek-ai/dsh-web-search-tavily
+ * @module @junjiangao/dsh-web-search-tavily
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
@@ -70,7 +70,7 @@ export interface Config {
 }
 export declare const Config: z<Config>;
 /** Settings namespace carrying this provider's endpoint, options, and key reference. */
-export declare const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
+export declare const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = "web-search-tavily";
 /** Register the Tavily search provider with `ctx.web`. */
 export declare function apply(ctx: Context, config: Config): void;
 //# sourceMappingURL=index.d.ts.map

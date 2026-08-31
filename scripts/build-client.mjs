@@ -9,8 +9,8 @@
  *   })
  *
  * esbuild compiles the client sources to a CJS body whose `require` calls
- * resolve through the shell's static module table / boot graph (declared in
- * `dsh.client.external`); this script wraps that body in the factory shell.
+ * resolve through the shell's static module table / boot graph (the dsh 0.1.2
+ * PLATFORM_MODULES baseline); this script wraps that body in the factory shell.
  */
 
 import { readFile, writeFile } from 'node:fs/promises'
@@ -18,15 +18,20 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const PACKAGE_ID = '@deepseek-ai/dsh-web-search-tavily'
+const PACKAGE_ID = '@junjiangao/dsh-web-search-tavily'
 
-/** Specifiers the shell resolves itself — must match `dsh.client.external`. */
+/**
+ * Specifiers the shell resolves itself. dsh 0.1.2 seeds a frozen
+ * PLATFORM_MODULES table (`react`, `react/jsx-runtime`, `react-dom`,
+ * `react-dom/client`, `@deepseek-ai/cordis`, `@deepseek-ai/dsh-client-store`,
+ * `@deepseek-ai/dsh-client-ui-slots`, `@deepseek-ai/dsh-client-ui-primitives`);
+ * only the keys this bundle actually imports at runtime are listed, so
+ * esbuild leaves them as `require` calls instead of bundling them.
+ */
 const EXTERNALS = [
   'react',
   'react/jsx-runtime',
-  '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-primitives',
 ]
 

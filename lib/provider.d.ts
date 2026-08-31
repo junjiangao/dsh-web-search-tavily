@@ -7,7 +7,7 @@
  * convention. `answer` maps to `content`; each result maps to a
  * `WebSearchSource` with the snippet preferring `content` and falling back to
  * `raw_content`.
- * @module @deepseek-ai/dsh-web-search-tavily/provider
+ * @module @junjiangao/dsh-web-search-tavily/provider
  */
 import type { WebSearchProvider, WebSearchRequest, WebSearchResult, WebSearchSource } from '@deepseek-ai/dsh-web';
 import type { TavilyErrorBody, TavilyResult, TavilySearchResponse } from './types.ts';
