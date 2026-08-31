@@ -29,7 +29,12 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       // src/types.ts is type-only: it emits no runtime code to cover.
-      exclude: ['src/types.ts'],
+      // client-src/** must be excluded explicitly: vitest 4.x matches
+      // coverage patterns with picomatch "contains" semantics, so
+      // 'src/**/*.ts' also substring-matches 'client-src/*.ts'
+      // ('client-src/client.ts' contains 'src/client.ts') and would drag the
+      // per-file 100% gate onto the under-tested card UI.
+      exclude: ['src/types.ts', 'client-src/**'],
       reporter: ['text', 'text-summary'],
       thresholds: {
         perFile: true,
