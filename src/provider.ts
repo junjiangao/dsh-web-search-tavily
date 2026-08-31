@@ -10,6 +10,8 @@
  * @module @junjiangao/dsh-web-search-tavily/provider
  */
 
+import { readFileSync } from 'node:fs'
+
 import { WebError } from '@deepseek-ai/dsh-web'
 import type {
   WebSearchProvider,
@@ -36,8 +38,15 @@ export const TAVILY_DEFAULT_SEARCH_DEPTH = 'basic'
 /** Tavily's documented upper bound for `max_results`. */
 export const TAVILY_MAX_RESULTS = 20
 
-/** Attribution header sent on every request. Bump with the package version. */
-const USER_AGENT = 'deepseek-harness/0.0.1'
+/**
+ * Attribution header sent on every request. Read from the package manifest so
+ * the version always matches the published package; `../package.json` resolves
+ * to the package root from both `src/` and the compiled `lib/`.
+ */
+const PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+).version
+const USER_AGENT = `deepseek-harness/${PACKAGE_VERSION}`
 
 /** Search depth values Tavily accepts. */
 export type TavilySearchDepth = 'ultra-fast' | 'fast' | 'basic' | 'advanced'
