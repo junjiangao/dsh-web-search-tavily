@@ -1,6 +1,6 @@
 {
   "name": "@junjiangao/dsh-web-search-tavily",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, and the native dsh 0.1.7 plugin configuration form",
   "keywords": [
     "dsh-plugin",
@@ -26,6 +26,9 @@
       "types": "./lib/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
+    "./client": {
+      "default": "./lib/client.js"
+    },
     "./src/*": "./src/*",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -40,8 +43,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
@@ -49,6 +52,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "peerDependencies": {
@@ -72,6 +84,7 @@
     "@deepseek-ai/dsh-web": "^0.1.7-alpha.1",
     "@types/node": "^22.20.0",
     "@vitest/coverage-v8": "^4.1.8",
+    "esbuild": "^0.28.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

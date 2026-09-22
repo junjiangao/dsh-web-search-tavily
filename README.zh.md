@@ -8,9 +8,9 @@
 
 - **Keyless 模式**——config、设置、凭据、环境变量均无 key 时，请求进入 Tavily keyless 模式：不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`。
 - **官方搜索参数全量**——深度、主题、时间范围、日期、天数、结果数、include/exclude 域名、answer、raw content、图片、favicon、用量、自动参数、精确匹配、语言、国家、每源 chunk 数均可配置。
-- **原生配置表单**——导出的 `Config` schema 即 dsh 0.1.7 为该插件条目渲染的表单（插件 → 插件配置）；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
+- **原生配置表单**——插件在插件页注册配置卡片（`plugins.row.config`，键为 `@junjiangao/dsh-web-search-tavily#web-search-tavily`），用 dsh 0.1.7 的共享设置表单承载条目 `Config` schema 的每个字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
-- **host-only，要求 dsh 0.1.7+**——无 client 面、无 `settingsScope`/`settings.installSection` 接线；配置界面由条目的 `Config` schema 自动生成。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
+- **要求 dsh 0.1.7+**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
 ## 安装
 
@@ -105,7 +105,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
 
 ## 设置表单与凭据
 
-本包**不携带 client 面**。dsh **0.1.7+** 直接从插件条目生成配置表单：导出的 `Config` schema 由 Loader 校验，并渲染在设置页的“插件 → 插件配置”页，键为条目 id（`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`）。所有字段都是 `volatile()`，提交修改后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
+host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进插件页的 `plugins.row.config` 槽，键为 `<包名>#<行 id>`（`@junjiangao/dsh-web-search-tavily#web-search-tavily`）。在该 bundle 页面打开这一行即可看到表单：每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 

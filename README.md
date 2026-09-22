@@ -8,9 +8,9 @@ Highlights:
 
 - **Keyless mode** — with no API key anywhere (config, settings, credentials, environment), requests run in Tavily's keyless mode: no `Authorization`, `x-tavily-access-mode: keyless`, and the `dsh-web-search-tavily-keyless` client source.
 - **Full official search surface** — every Tavily search parameter is configurable: depth, topic, time range, dates, days, result count, include/exclude domains, answer, raw content, images, favicon, usage, auto parameters, exact match, language, country, and chunks per source.
-- **Native configuration form** — the exported `Config` schema is the form dsh 0.1.7 renders for this plugin entry (Plugins → Plugin configuration); every field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
+- **Native configuration form** — the plugin registers a configuration card on the Plugins page (`plugins.row.config`, keyed `@junjiangao/dsh-web-search-tavily#web-search-tavily`) that stages every field of the entry's `Config` schema through dsh 0.1.7's shared settings form; each field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
 - **Standard bundle** — declares `dsh.bundle`, installable with `dsh plugin add`.
-- **Host-only, dsh 0.1.7+** — no client half and no `settingsScope`/`settings.installSection` wiring; the configuration surface is generated from the entry's `Config` schema. The plugin icon is the harness web-search glyph (`icon.svg`).
+- **dsh 0.1.7+** — the host half owns the Loader entry, its schema, and the search provider; the client half is one small bundle that registers the entry's configuration card. No `settingsScope` and no `settings.installSection` wiring. The plugin icon is the harness web-search glyph (`icon.svg`).
 
 ## Install
 
@@ -105,7 +105,7 @@ When every key source is empty, requests carry no `Authorization`, send `x-tavil
 
 ## Settings form and credentials
 
-The package declares **no client face**. dsh **0.1.7+** generates the configuration form from the plugin entry itself: the exported `Config` schema is validated by the Loader and rendered in the settings page's "Plugins → Plugin configuration" tab, keyed by the entry id (`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`). Every field is `volatile()`, so a committed edit updates the `Volatile` refs the provider reads per search — no re-registration and no restart. `apiKey` carries `role('secret')` (redacted on every settings wire) and `apiKeyEnv` carries `role('credential-ref')`, the same declarations the official `web-search-deepseek` provider uses.
+The host half owns the Loader entry, its `Config` schema, and the search provider; the browser half is a single client bundle (`lib/client.js`) that registers the entry's configuration card into the Plugins page's `plugins.row.config` slot, keyed `<package>#<row id>` (`@junjiangao/dsh-web-search-tavily#web-search-tavily`). Opening that row on the bundle's page shows the form: every field is `volatile()`, so a committed edit updates the `Volatile` refs the provider reads per search — no re-registration and no restart. The card registers only while the Host serves the `web-search-tavily` namespace, so a deployment without the provider shows no trace of it. `apiKey` carries `role('secret')` (redacted on every settings wire) and `apiKeyEnv` carries `role('credential-ref')`, the same declarations the official `web-search-deepseek` provider uses.
 
 The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in the form is supported but persists in the settings document — prefer credentials or the environment.
 
