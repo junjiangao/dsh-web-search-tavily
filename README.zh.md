@@ -105,7 +105,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
 
 ## 设置表单与凭据
 
-host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进插件页的 `plugins.row.config` 槽，键为 `<包名>#<行 id>`（`@junjiangao/dsh-web-search-tavily#web-search-tavily`）。在该 bundle 页面打开这一行即可看到表单：每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
+host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进插件页的两个位置。`plugins.item` 承载 Official 分组里的卡片——其 id 就是 Host 提供的 `web-search-tavily` 命名空间，因此插件页能把该条目的表单交给被打开的卡片，设置一次点击即可进入，与官方提供方页面一致。`plugins.row.config` 承载该 bundle 补丁插入的那一行上的配置入口，键为 `<包名>#<行 id>`（`@junjiangao/dsh-web-search-tavily#web-search-tavily`）。两者渲染同一命名空间的同一张表单，任一处保存都落到同一位置。每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 

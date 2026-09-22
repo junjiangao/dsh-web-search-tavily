@@ -11,7 +11,11 @@ export default defineConfig({
         new URL('./tests/stubs/client-store.ts', import.meta.url),
       ),
       // The card module imports react at module scope; controller tests never
-      // render, so a minimal stub stands in.
+      // render, so a minimal stub stands in. The jsx-runtime entry precedes
+      // `react` because a string alias also matches its subpaths, and the
+      // automatic runtime must not resolve to the react stub.
+      'react/jsx-runtime': fileURLToPath(new URL('./tests/stubs/jsx-runtime.ts', import.meta.url)),
+      'react/jsx-dev-runtime': fileURLToPath(new URL('./tests/stubs/jsx-runtime.ts', import.meta.url)),
       react: fileURLToPath(new URL('./tests/stubs/react.ts', import.meta.url)),
       // The native settings form, its fields, and the shared form model.
       '@deepseek-ai/dsh-client-ui-primitives': fileURLToPath(
