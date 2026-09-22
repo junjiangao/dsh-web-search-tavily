@@ -109,6 +109,8 @@ host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览�
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
+卡片还会向凭据域查询 `apiKeyEnv` 当前指向的引用，并把结果显示在表单上——“密钥已配置：凭据 TAVILY_API_KEY”，或“密钥未配置，搜索将进入无密钥模式”——这样在发起搜索之前就能知道它是否会带凭据。这次查询是可选的：浏览器侧若拿不到凭据域，表单照常渲染，只是没有这一行状态。
+
 插件图标采用 harness 的 web-search 图形：`package.json` 声明 `"icon": "./icon.svg"`，与内置 `web-search` 图形的位置和形状一致。该 SVG 用线性渐变近似内置的 conic-gradient 圆环——内置实现用 `foreignObject` 绘制圆环，而清单图标以 `<img>` 渲染，`foreignObject` 在其中为空。
 
 ## 映射

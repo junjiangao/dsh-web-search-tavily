@@ -7,6 +7,11 @@
  * `<bundle package>#<row id>`, which is what gives that row on the bundle's
  * page its configure control; the page then hands the entry's configuration
  * form to the card and the shared model stages every edit until one save.
+ *
+ * The section names a credential reference, never the secret: whether a key
+ * exists behind that reference is a question for the credentials domain, and
+ * the card asks it here so the form can say whether a search would be
+ * authenticated or run keyless.
  */
 
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -15,7 +20,14 @@ import {
   type SettingsFieldState, type SettingsFormActions, type SettingsFormLabels,
   type SettingsFormScope, type SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { RemoteService } from './context.ts'
 import { specOf, TAVILY_FIELDS, type TavilyField } from './fields.ts'
+
+/** Credential reference the provider resolves when the section names none. */
+export const DEFAULT_API_KEY_REF = 'TAVILY_API_KEY'
+
+/** Field naming the credential reference the provider resolves. */
+const API_KEY_ENV_FIELD = 'apiKeyEnv'
 
 /** Settings namespace of this provider: the Loader entry id. */
 export const TAVILY_SETTINGS_NS = 'web-search-tavily'
@@ -35,10 +47,25 @@ export const TAVILY_ROW_CONFIG_KEY = `${TAVILY_BUNDLE}#${TAVILY_ROW_ID}`
 /** The section shape the form stages over; values are read field by field. */
 export type TavilySettings = Record<string, unknown>
 
+/** What the credentials domain last reported about the reference in force. */
+export interface TavilyCredentialState {
+  /** Reference this answer describes. */
+  readonly ref: string
+  /** Whether any layer supplies a value for it. */
+  readonly configured: boolean
+  /** Whether the credentials domain accepts a write for it. */
+  readonly writable: boolean
+}
+
 /** What the card renders: the shared form state plus every field's draft. */
 export interface TavilyCardState extends SettingsFormShell {
   /** Draft text, override mark, and validity of each configured field. */
   readonly fields: Readonly<Record<string, SettingsFieldState>>
+  /**
+   * The credential the section names, or undefined when this deployment
+   * exposes no credentials domain to ask.
+   */
+  readonly credential?: TavilyCredentialState | undefined
 }
 
 /** The face the card component reads and writes through. */
@@ -59,13 +86,26 @@ export interface TavilyCardFace {
 export class TavilyCardController {
   private readonly form: SettingsFormModel<TavilySettings>
   private readonly store: SnapshotStore<TavilyCardState>
+  private credential: TavilyCredentialState | undefined
+  private readonly disposers: Array<() => void> = []
 
   /**
    * @param scope - the bound configuration form for the `web-search-tavily` entry.
+   * @param remote - the remote service, when this deployment exposes the
+   * credentials domain; the card reports the key as unknown without it.
    */
-  constructor(scope: SettingsFormScope<TavilySettings>) {
+  constructor(private readonly scope: SettingsFormScope<TavilySettings>, remote?: RemoteService | undefined) {
     this.form = new SettingsFormModel(scope, TAVILY_FIELDS.map(field => specOf(field)))
     this.store = this.form.bind(() => this.projection())
+    if (remote === undefined) return
+    // The reference can change under the card (a saved edit or another
+    // surface), and a key can be written without the section moving at all,
+    // so both the scope and the forwarded credential event re-read it.
+    this.disposers.push(scope.subscribe(() => { void this.readCredential(remote) }))
+    this.disposers.push(remote.$on('credentials/reference-updated', (ref) => {
+      if (ref === this.credential?.ref) void this.readCredential(remote)
+    }))
+    void this.readCredential(remote)
   }
 
   /**
@@ -76,14 +116,72 @@ export class TavilyCardController {
     return { store: this.store, actions: this.form.actions() }
   }
 
-  /** Release the form's accepted-value subscription. */
+  /** Release the form's and the credentials domain's subscriptions. */
   dispose(): void {
+    for (const dispose of this.disposers.splice(0)) dispose()
     this.form.dispose()
+  }
+
+  /**
+   * Ask the credentials domain about the reference the section currently
+   * names. The answer is stored with the reference it describes: the reference
+   * can change between the request and its response, so a response is
+   * published only while it still answers for the reference in force.
+   */
+  private async readCredential(remote: RemoteService): Promise<void> {
+    const ref = refOf(this.section())
+    if (ref !== this.credential?.ref) {
+      // A new reference knows nothing yet; keeping the old answer would claim
+      // a key is configured under a name nobody has checked.
+      this.credential = { ref, configured: false, writable: true }
+      this.publish()
+    }
+    try {
+      const response = await remote.credentials.describe([ref])
+      if (!response.ok || ref !== refOf(this.section())) return
+      const view = response.value[ref]
+      const next: TavilyCredentialState = {
+        ref,
+        configured: view?.configured ?? false,
+        // An unknown reference stays writable: the Host is what refuses, and
+        // the page must not guess a refusal.
+        writable: view?.writable ?? true,
+      }
+      if (next.configured === this.credential?.configured && next.writable === this.credential?.writable) return
+      this.credential = next
+      this.publish()
+    } catch {
+      // A failed read leaves the last known answer standing; the form itself
+      // does not depend on it.
+    }
+  }
+
+  private publish(): void {
+    this.store.set(this.projection())
+  }
+
+  /** The accepted section the reference is read from. */
+  private section(): Record<string, unknown> | undefined {
+    return this.scope.getSnapshot().value as Record<string, unknown> | undefined
   }
 
   private projection(): TavilyCardState {
     const fields: Record<string, SettingsFieldState> = {}
     for (const field of TAVILY_FIELDS) fields[field.field] = this.form.field(field.field)
-    return { ...this.form.shell(), fields }
+    return {
+      ...this.form.shell(),
+      fields,
+      ...this.credential === undefined ? {} : { credential: this.credential },
+    }
   }
+}
+
+/**
+ * The credential reference the section names, or the provider's default.
+ * @param section - the accepted section, when one has arrived.
+ * @returns the reference to address.
+ */
+function refOf(section: Record<string, unknown> | undefined): string {
+  const declared = section?.[API_KEY_ENV_FIELD]
+  return typeof declared === 'string' && declared.length > 0 ? declared : DEFAULT_API_KEY_REF
 }

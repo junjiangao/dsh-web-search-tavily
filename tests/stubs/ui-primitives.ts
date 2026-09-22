@@ -6,6 +6,8 @@
  * contract the shell runs.
  */
 
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+
 export type SettingsFormPathOp =
   | { op: 'set'; path: readonly string[]; value: unknown }
   | { op: 'unset'; path: readonly string[] }
@@ -94,20 +96,9 @@ export class SettingsFormModel<T> {
   }
 
   bind<S>(project: () => S) {
-    let snapshot = project()
-    const listeners = new Set<() => void>()
-    this.listeners.add(() => {
-      snapshot = project()
-      for (const listener of listeners) listener()
-    })
-    return {
-      getSnapshot: () => snapshot,
-      subscribe: (listener: () => void) => {
-        listeners.add(listener)
-        return () => { listeners.delete(listener) }
-      },
-      set: () => {},
-    }
+    const store = createSnapshotStore(project())
+    this.listeners.add(() => { store.set(project()) })
+    return store
   }
 
   shell(): SettingsFormShell {

@@ -20,6 +20,8 @@ export interface TavilyCardProps {
   readonly view?: 'summary' | 'page'
 }
 
+const credentialStyle = { fontSize: '12px', margin: '0 0 12px', opacity: 0.85 }
+
 /** Dictionary copy of one key, or the empty string when the namespace has none. */
 function copyOf(t: (key: string) => string, key: string): string {
   const text = t(key)
@@ -84,6 +86,15 @@ export function TavilyCard(props: TavilyCardProps, face: TavilyCardFace) {
   if (props.view === 'summary') return <p>{face.t('summary')}</p>
   return (
     <SettingsForm labels={face.labels} state={state} onSave={face.actions.save} onDiscard={face.actions.discard}>
+      {state.credential === undefined
+        ? null
+        : (
+          <p style={credentialStyle} data-plugin-credential-status>
+            {state.credential.configured
+              ? `${face.t('credentialConfigured')}${state.credential.ref}`
+              : `${face.t('credentialUnset')}${state.credential.ref}`}
+          </p>
+        )}
       {face.fields.map(field => fieldControl(field, state, face))}
     </SettingsForm>
   )

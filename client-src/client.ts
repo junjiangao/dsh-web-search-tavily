@@ -15,12 +15,13 @@
 
 import { TavilyCard, type TavilyCardProps } from './card.tsx'
 import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from './controller.ts'
-import type { Context } from './context.ts'
+import type { Context, RemoteService } from './context.ts'
 import { TAVILY_FIELDS } from './fields.ts'
 import { dictionaries, NS } from './locales.ts'
 
 export type { TavilyCardProps } from './card.tsx'
-export type { TavilyCardFace, TavilyCardState } from './controller.ts'
+export type { TavilyCardFace, TavilyCardState, TavilyCredentialState } from './controller.ts'
+export { DEFAULT_API_KEY_REF } from './controller.ts'
 
 export { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_ROW_ID, TAVILY_SETTINGS_NS } from './controller.ts'
 export { TAVILY_FIELDS, type TavilyField, type TavilyFieldKind } from './fields.ts'
@@ -39,7 +40,11 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'web-search-tavily: dictionaries')
 
-  const controller = new TavilyCardController(ctx.configForms.get(TAVILY_SETTINGS_NS))
+  // Read rather than inject: a deployment without the credentials domain
+  // still renders the form and reports the key as unknown, instead of leaving
+  // this entry pending and the whole page short one plugin.
+  const remote = ctx.get('remote') as RemoteService | undefined
+  const controller = new TavilyCardController(ctx.configForms.get(TAVILY_SETTINGS_NS), remote)
   ctx.effect(() => () => { controller.dispose() }, 'web-search-tavily: form subscription')
 
   const face = {

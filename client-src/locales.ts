@@ -12,6 +12,8 @@ export const NS = 'webSearchTavily'
 const zh: Record<string, string> = {
   title: 'Tavily 搜索',
   summary: '通过 Tavily 提供网络搜索；未配置密钥时进入无密钥模式。',
+  credentialConfigured: '密钥已配置：凭据 ',
+  credentialUnset: '密钥未配置，搜索将进入无密钥模式：凭据 ',
   save: '保存',
   saving: '保存中…',
   readOnly: '当前部署以只读方式保存配置，修改不会写入。',
@@ -62,6 +64,8 @@ const zh: Record<string, string> = {
 const en: Record<string, string> = {
   title: 'Tavily search',
   summary: 'Serves web search through Tavily; runs keyless until a key is configured.',
+  credentialConfigured: 'Key configured: credential ',
+  credentialUnset: 'Key not configured, searches run keyless: credential ',
   save: 'Save',
   saving: 'Saving…',
   readOnly: 'This deployment stores settings read-only; edits are not written.',

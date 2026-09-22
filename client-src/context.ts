@@ -68,11 +68,59 @@ export interface ConfigForms {
   whileServed(namespaces: readonly string[], register: (served: ReadonlySet<string>) => () => void): () => void
 }
 
+/** What the credentials domain reports about one reference. */
+export interface CredentialInfoView {
+  /** Whether any layer supplies a value for the reference. */
+  readonly configured: boolean
+  /** Whether the credentials domain accepts a write for it. */
+  readonly writable: boolean
+}
+
+/** One remote call's settled answer. */
+export interface RemoteResult<T> {
+  /** Whether the Host answered. */
+  readonly ok: boolean
+  /** The answer, meaningful only when {@link RemoteResult.ok}. */
+  readonly value: T
+}
+
+/** The credentials remote, as the card reads it. */
+export interface CredentialsRemote {
+  /**
+   * Describe references without revealing their values.
+   * @param refs - the references to describe.
+   * @returns each reference's configured/writable state.
+   */
+  describe(refs: readonly string[]): Promise<RemoteResult<Record<string, CredentialInfoView | undefined>>>
+}
+
+/** The forwarded-event and namespace face of the remote service. */
+export interface RemoteService {
+  readonly credentials: CredentialsRemote
+  /**
+   * Observe one Host-forwarded event.
+   * @param event - the forwarded event name.
+   * @param listener - invoked with the event's subject.
+   * @returns the disposer removing this listener.
+   */
+  $on(event: string, listener: (payload: string) => void): () => void
+}
+
 /** The browser plugin context, as far as this bundle reads it. */
 export interface Context {
   readonly locale: LocaleService
   readonly slots: SlotsService
   readonly configForms: ConfigForms
+  /**
+   * Read an optional service.
+   *
+   * The credentials domain is read this way on purpose: a deployment without
+   * it still renders the form and reports the key as unknown, rather than
+   * keeping the whole entry from activating.
+   * @param name - the service name.
+   * @returns the service, or undefined when this context does not provide it.
+   */
+  get(name: string): unknown
   /**
    * Run a side effect for as long as the plugin's fiber lives.
    * @param callback - the effect; an optional returned disposer runs on unload.
