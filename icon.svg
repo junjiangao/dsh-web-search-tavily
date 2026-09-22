@@ -1,0 +1,14 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Web-search artwork, matching the harness's built-in web-search glyph.
+       The official component paints its ring with a CSS conic-gradient inside a
+       foreignObject, which renders empty when the manifest icon is shown in an
+       <img>; this file approximates the same ring with an SVG gradient. -->
+  <defs>
+    <linearGradient id="web-search-ring" x1="22.4215" y1="9.56055" x2="9.56055" y2="22.4215" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#41E1AC" />
+      <stop offset="1" stop-color="#5547D2" />
+    </linearGradient>
+  </defs>
+  <circle cx="15.7661" cy="16.2159" r="6.655" stroke="url(#web-search-ring)" stroke-width="4" />
+  <path d="M26.5362 26.9865L22.3813 22.8317" stroke="#2F2295" stroke-width="3" />
+</svg>

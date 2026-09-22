@@ -7,29 +7,10 @@ import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import WebRuntime from '@deepseek-ai/dsh-web'
 import * as tavilyPlugin from '../src/index.ts'
 import { TAVILY_PROVIDER_ID } from '../src/provider.ts'
-import { WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE } from '../src/index.ts'
-
-class MemorySettings extends SettingsProvider {
-  doc: Record<string, unknown> = {}
-
-  get writable(): boolean {
-    return true
-  }
-
-  protected load(): Promise<Record<string, unknown>> {
-    return Promise.resolve(structuredClone(this.doc))
-  }
-
-  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    this.doc = { ...this.doc, [ns]: structuredClone(section) }
-    return Promise.resolve()
-  }
-}
+import { liveConfig } from './live-config.ts'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -96,7 +77,7 @@ describe('web-search-tavily credentials', () => {
     }
   })
 
-  it('resolves the key reference chosen by the settings section', async () => {
+  it('resolves the key reference chosen by the configuration form', async () => {
     const previous = process.env.TAVILY_API_KEY
     delete process.env.TAVILY_API_KEY
     const dir = await mkdtemp(join(tmpdir(), 'dsh-web-search-tavily-credentials-'))
@@ -106,13 +87,11 @@ describe('web-search-tavily credentials', () => {
     try {
       await ctx.plugin(WebRuntime, { searchProvider: TAVILY_PROVIDER_ID })
       await ctx.plugin(LocalCredentialProvider, { path: join(dir, '.credentials.yaml'), watch: false })
-      const settingsFiber = ctx.plugin(MemorySettings)
-      await settingsFiber.await()
-      await ctx.plugin(tavilyPlugin, { apiKeyEnv: 'FIRST_REF' })
+      const live = await liveConfig(ctx, tavilyPlugin, { apiKeyEnv: 'FIRST_REF' })
 
       await ctx.credentials.set(credentialRef('FIRST_REF'), 'first-key')
       await ctx.web.search({ query: 'first' })
-      await ctx.settings.update(WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, { apiKeyEnv: 'SECOND_REF' })
+      await live.update({ apiKeyEnv: 'SECOND_REF' })
       await ctx.credentials.set(credentialRef('SECOND_REF'), 'second-key')
       await ctx.web.search({ query: 'second' })
 

@@ -8,8 +8,9 @@ Highlights:
 
 - **Keyless mode** — with no API key anywhere (config, settings, credentials, environment), requests run in Tavily's keyless mode: no `Authorization`, `x-tavily-access-mode: keyless`, and the `dsh-web-search-tavily-keyless` client source.
 - **Full official search surface** — every Tavily search parameter is configurable: depth, topic, time range, dates, days, result count, include/exclude domains, answer, raw content, images, favicon, usage, auto parameters, exact match, language, country, and chunks per source.
-- **Settings UI + credentials** — a `dsh-settings` section (editable from the web settings page) plus `dsh-credentials` resolution; the key can also come from a literal `apiKey` or the environment.
+- **Native configuration form** — the exported `Config` schema is the form dsh 0.1.7 renders for this plugin entry (Plugins → Plugin configuration); every field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
 - **Standard bundle** — declares `dsh.bundle`, installable with `dsh plugin add`.
+- **Host-only, dsh 0.1.7+** — no client half and no `settingsScope`/`settings.installSection` wiring; the configuration surface is generated from the entry's `Config` schema. The plugin icon is the harness web-search glyph (`icon.svg`).
 
 ## Install
 
@@ -27,7 +28,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
@@ -51,7 +52,7 @@ This bundle deliberately only inserts its own plugin row and never overrides the
 
 ## Config
 
-All fields optional except where the schema default is noted. The same schema powers the settings section.
+All fields optional except where the schema default is noted. This schema is the form the dsh 0.1.7 settings page renders for the plugin entry.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -102,20 +103,13 @@ Key resolution order: literal `apiKey` → `dsh-credentials` (`apiKeyEnv` ref) �
 
 When every key source is empty, requests carry no `Authorization`, send `x-tavily-access-mode: keyless`, and use the `dsh-web-search-tavily-keyless` client source — the same convention as the official Tavily SDK. Keyless mode is a legitimate provider state, not a configuration error. Tavily's server rate-limits keyless use and may ignore or downgrade some parameters (result count, depth, answer). Only `search` (and `extract`) exist in keyless mode; this provider only ever calls `/search`.
 
-## Settings UI and credentials
+## Settings form and credentials
 
-`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'` (a plain namespace constant) installs the configuration as a settings section through the dsh 0.1.2 settings service (`settings.installSection`, gated by `ctx.inject(['settings'], ...)`), so the web settings page can edit every field above and changes apply to the next search without re-registration. The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in settings is supported but persists in the settings document — prefer credentials or the environment.
+The package declares **no client face**. dsh **0.1.7+** generates the configuration form from the plugin entry itself: the exported `Config` schema is validated by the Loader and rendered in the settings page's "Plugins → Plugin configuration" tab, keyed by the entry id (`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`). Every field is `volatile()`, so a committed edit updates the `Volatile` refs the provider reads per search — no re-registration and no restart. `apiKey` carries `role('secret')` (redacted on every settings wire) and `apiKeyEnv` carries `role('credential-ref')`, the same declarations the official `web-search-deepseek` provider uses.
 
-### Client settings card
+The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in the form is supported but persists in the settings document — prefer credentials or the environment.
 
-The package also ships a client face (`dsh.client` declaration + `exports["./client"]`, built as `lib/client.js`): it registers a `web-search-tavily` card into the settings page's "Plugins → Plugin configuration" tab covering the common fields (API key, key env var, endpoint, result count, search depth, topic, and the answer/images/raw content/favicon/usage toggles). The card binds the same settings namespace; other fields save straight into the settings document, while **the API key goes through the credentials domain** and never lands in the settings file. The wire face is probed per call to match the deployment line: dsh **0.1.1-rc.x** serves `connection.api.credentials` (object arguments, `{ result: { ok, value | error } }` envelope — the same face the official cards of that line call), while dsh **0.1.2+** mounts `remote.credentials` (positional arguments, RemoteResult envelope); failed reads retry with backoff until the face answers. `@deepseek-ai/dsh-client-ui-primitives` is declared as a bundle external for the native chevron. Restart the web service after install so the client-modules graph picks the package up (it scans loader entries at startup).
-
-Card features:
-
-- **Native card chrome**: the disclosure header, body, and footer mirror the official `PluginCard` 1:1 — the native 14px primitives chevron, official spacing/typography/colors under a `tavily-` scoped stylesheet, the read-only notice when the document is not writable, and auto-collapse once the Host confirms a save. Closed by default; the whole header row (title + description + chevron) toggles it, with an unsaved badge while drafts exist.
-- **Recommended configuration**: the "Apply recommended settings" button stages the **Tavily official defaults** (`apiKeyEnv: TAVILY_API_KEY`, `searchDepth: basic`, `maxResults: 5`, `includeAnswer/includeImages/includeRawContent/includeFavicon/includeUsage: false`) — deliberately not aggressive values, because **keyless mode (no key) rate-limits and may ignore or downgrade result count, depth, and answer parameters**; official defaults behave identically with and without a key. Staged only; review then save.
-- **Auto-detected key state**: like the official `web-search-deepseek` card, the card asks the credentials domain via `credentials.describe` — an exported `TAVILY_API_KEY`, a credential-store record, or a stored literal all report as "configured" with **no manual setup**. Only when every source is empty does the keyless notice appear (rate limiting and parameter downgrade). A key supplied by the **launch environment** is read-only here: the key input disables (the official card gates on the same `writable` answer), and a genuinely refused write surfaces the host's own refusal message verbatim instead of a generic save-failure line.
-- **Field hints**: every field carries a hint that flags token impact (`includeRawContent` significantly raises tokens/cost, `includeAnswer` adds output tokens, `maxResults` scales with count, `searchDepth: advanced` is slower and costlier).
+The plugin artwork is the harness web-search glyph: `package.json` declares `"icon": "./icon.svg"`, the same position and shape the built-in `web-search` artwork uses. The SVG approximates the built-in conic-gradient ring with a linear gradient, because the harness paints that ring with a `foreignObject` that stays empty inside the `<img>` a manifest icon renders as.
 
 ## Mapping
 

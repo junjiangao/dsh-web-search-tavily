@@ -1,51 +1,17 @@
-/** The `web-search-tavily` settings section layered over the composition entry. */
+/** The `web-search-tavily` configuration form, driven through its Loader entry. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { Fiber } from '@deepseek-ai/cordis'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import WebRuntime from '@deepseek-ai/dsh-web'
 import * as tavilyPlugin from '../src/index.ts'
-import { WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE } from '../src/index.ts'
-
-/** The smallest real provider: one in-memory document, always writable. */
-class MemorySettings extends SettingsProvider {
-  doc: Record<string, unknown> = {}
-
-  get writable(): boolean {
-    return true
-  }
-
-  protected load(): Promise<Record<string, unknown>> {
-    return Promise.resolve(structuredClone(this.doc))
-  }
-
-  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    this.doc = { ...this.doc, [ns]: structuredClone(section) }
-    return Promise.resolve()
-  }
-}
+import { Config, WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE } from '../src/index.ts'
+import { liveConfig } from './live-config.ts'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
-}
-
-async function boot(): Promise<{ ctx: Context; settingsFiber: Fiber; pluginFiber: Fiber }> {
-  const ctx = new Context()
-  await ctx.plugin(WebRuntime, {})
-  const settingsFiber = ctx.plugin(MemorySettings)
-  await settingsFiber.await()
-  const pluginFiber = ctx.plugin(tavilyPlugin, {
-    apiKey: 'entry-key',
-    baseURL: 'https://entry.test',
-    searchDepth: 'basic',
-  })
-  await pluginFiber.await()
-  return { ctx, settingsFiber, pluginFiber }
 }
 
 /**
@@ -68,68 +34,58 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('web-search-tavily settings section', () => {
-  it('serves stored options to the next search without re-registering the provider', async () => {
-    const bench = await boot()
-    await bench.ctx.settings.update(WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, {
+describe('web-search-tavily configuration form', () => {
+  it('serves an edited value to the next search without re-registering the provider', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, {})
+    const live = await liveConfig(ctx, tavilyPlugin, {
+      apiKey: 'entry-key',
+      baseURL: 'https://entry.test',
+      searchDepth: 'basic',
+    })
+    expect((await searchOnce(ctx)).url).toContain('https://entry.test/search')
+
+    await live.update({
+      baseURL: 'https://settings.test',
       searchDepth: 'advanced',
-      topic: 'news',
       maxResults: 7,
       includeAnswer: true,
       includeDomains: ['a.test'],
-      baseURL: 'https://settings.test',
     })
 
-    const { url, init } = await searchOnce(bench.ctx)
+    const { url, init } = await searchOnce(ctx)
     expect(url).toContain('https://settings.test/search')
     expect(JSON.parse(init.body as string)).toMatchObject({
       search_depth: 'advanced',
-      topic: 'news',
       max_results: 7,
       include_answer: true,
       include_domains: ['a.test'],
     })
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer entry-key')
-    await bench.ctx.fiber.dispose()
+    await ctx.fiber.dispose()
   })
 
-  it('keeps the literal key out of every described layer', async () => {
-    const bench = await boot()
-    await bench.ctx.settings.update(WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, { apiKey: 'stored-secret' })
-
-    const [descriptor] = bench.ctx.settings.describe({ redactSecrets: true })
-      .filter(row => String(row.ns) === 'web-search-tavily')
-
-    expect(JSON.stringify(descriptor)).not.toContain('stored-secret')
-    expect(descriptor?.secrets).toEqual([{ path: ['apiKey'], set: true }])
-    await bench.ctx.fiber.dispose()
+  it('declares every config field volatile, so the settings page can edit it live', () => {
+    expect(WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE).toBe('web-search-tavily')
+    const dict = (Config as unknown as { dict: Record<string, { meta?: { volatile?: boolean; role?: string } }> }).dict
+    const fields = Object.entries(dict)
+    expect(fields.length).toBeGreaterThan(0)
+    for (const [field, schema] of fields) {
+      expect(schema.meta?.volatile, field).toBe(true)
+    }
+    // The key is a secret (redacted on every wire surface) and the env-var
+    // field is a credential reference, exactly as the official provider
+    // declares them.
+    expect(dict.apiKey?.meta?.role).toBe('secret')
+    expect(dict.apiKeyEnv?.meta?.role).toBe('credential-ref')
   })
 
-  it('falls back to the composition entry when the settings provider detaches', async () => {
-    const bench = await boot()
-    await bench.ctx.settings.update(WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE, {
-      searchDepth: 'advanced',
-      baseURL: 'https://settings.test',
-    })
-    const stored = await searchOnce(bench.ctx)
-    expect(stored.url).toContain('https://settings.test/search')
-
-    await bench.settingsFiber.dispose()
-
-    const entry = await searchOnce(bench.ctx)
-    expect(entry.url).toContain('https://entry.test/search')
-    expect(JSON.parse(entry.init.body as string)).toMatchObject({ search_depth: 'basic' })
-    expect((entry.init.headers as Record<string, string>)['authorization']).toBe('Bearer entry-key')
-    await bench.ctx.fiber.dispose()
-  })
-
-  it('releases the namespace when the plugin unloads', async () => {
-    const bench = await boot()
-    expect(bench.ctx.settings.describe().map(row => String(row.ns))).toContain('web-search-tavily')
-
-    await bench.pluginFiber.dispose()
-
-    expect(bench.ctx.settings.describe().map(row => String(row.ns))).not.toContain('web-search-tavily')
-    await bench.ctx.fiber.dispose()
+  it('releases the provider when the entry unloads', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, {})
+    const live = await liveConfig(ctx, tavilyPlugin, {})
+    await live.fiber.dispose()
+    await expect(ctx.web.search({ query: 'after-unload' })).rejects.toThrow()
+    await ctx.fiber.dispose()
   })
 })

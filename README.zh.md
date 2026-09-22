@@ -8,8 +8,9 @@
 
 - **Keyless 模式**——config、设置、凭据、环境变量均无 key 时，请求进入 Tavily keyless 模式：不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`。
 - **官方搜索参数全量**——深度、主题、时间范围、日期、天数、结果数、include/exclude 域名、answer、raw content、图片、favicon、用量、自动参数、精确匹配、语言、国家、每源 chunk 数均可配置。
-- **设置界面 + 凭据**——`dsh-settings` 设置段（web 设置页可编辑）+ `dsh-credentials` 密钥解析；key 也可来自字面量 `apiKey` 或环境变量。
+- **原生配置表单**——导出的 `Config` schema 即 dsh 0.1.7 为该插件条目渲染的表单（插件 → 插件配置）；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
+- **host-only，要求 dsh 0.1.7+**——无 client 面、无 `settingsScope`/`settings.installSection` 接线；配置界面由条目的 `Config` schema 自动生成。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
 ## 安装
 
@@ -27,7 +28,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
@@ -51,7 +52,7 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 ## 配置
 
-除标注 schema 默认值的字段外均可选。同一 schema 即设置界面字段。
+除标注 schema 默认值的字段外均可选。该 schema 即 dsh 0.1.7 设置页为该插件条目渲染的表单。
 
 | 配置键 | 默认值 | 含义 |
 |---|---|---|
@@ -102,20 +103,13 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.1.0.tgz
 
 所有 key 来源为空时，请求不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`——与官方 SDK 约定一致。keyless 是合法状态而非配置错误。Tavily 服务端会对 keyless 限流，并可能忽略或降级部分参数（结果数、深度、answer）。keyless 仅支持 `search`（和 `extract`）；本插件只调用 `/search`。
 
-## 设置界面与凭据
+## 设置表单与凭据
 
-`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`（普通命名空间常量）通过 dsh 0.1.2 设置服务把配置注册为设置段（`settings.installSection`，由 `ctx.inject(['settings'], ...)` 门控）：web 设置页可编辑上表全部字段，修改后下一次搜索即生效，无需重注册。推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。设置文档中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
+本包**不携带 client 面**。dsh **0.1.7+** 直接从插件条目生成配置表单：导出的 `Config` schema 由 Loader 校验，并渲染在设置页的“插件 → 插件配置”页，键为条目 id（`WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'`）。所有字段都是 `volatile()`，提交修改后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
 
-### 客户端设置卡片
+推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
-包内还携带一个 client 面（`dsh.client` 声明 + `exports["./client"]`，构建产物 `lib/client.js`）：向 web 设置页的"插件 → 插件配置"页注册 `web-search-tavily` 卡片，可编辑常用字段（API key、key 环境变量、接口地址、结果数量、检索深度、topic、answer/images/raw content/favicon/usage 开关）。卡片绑定同一个 settings namespace；其他字段保存即写入设置文档，**API key 走凭据域**，不落设置文档。调用面按部署版本逐次探测：dsh **0.1.1-rc.x** 走 `connection.api.credentials`（对象参数、`{ result: { ok, value | error } }` 信封，与该版本官方卡片完全一致），dsh **0.1.2+** 走 `remote.credentials`（位置参数、RemoteResult 信封）；读取失败会退避重试直到调用面就绪。`@deepseek-ai/dsh-client-ui-primitives` 已声明为 bundle 外部依赖（取原生 chevron 图标）。安装后需重启 web 服务让 client 模块图收录该包（client-modules 启动时扫描 loader 条目）。
-
-卡片特性：
-
-- **原生卡片外观**：披露头部、正文与页脚逐条对齐官方 `PluginCard`——原生 primitives 14px chevron 图标、官方间距/字号/配色（`tavily-` 前缀样式表）、文档只读时的只读提示，以及宿主确认保存后的自动折叠。默认收起，整行头部（标题+描述+chevron）点击展开；未保存改动时头部显示徽标。
-- **推荐配置**："使用推荐配置"填入 **Tavily 官方默认值**（`apiKeyEnv: TAVILY_API_KEY`、`searchDepth: basic`、`maxResults: 5`、`includeAnswer/includeImages/includeRawContent/includeFavicon/includeUsage: false`）——刻意不用激进值，因为 **keyless 模式（无 key）会限流并可能忽略/降级结果数、深度、answer 参数**，官方默认在有无 key 两种模式下行为一致。填入后为暂存状态，可逐个调整再保存。
-- **密钥状态自动识别**：与官方 `web-search-deepseek` 卡片一致，卡片通过 `credentials.describe` 询问凭据域——`TAVILY_API_KEY` 环境变量已导出、或凭据库/设置字面量中已有 key 时直接显示"已配置"，**无须手动设置**；只有所有来源都为空时才显示 keyless 提示条（说明限流与参数降级风险）。由**启动环境**提供的 key 在此处只读：密钥输入框随之禁用（与官方卡片同样依据 `writable` 判定）；写入被真正拒绝时，卡片逐字显示宿主的拒绝信息，而不是笼统的保存失败文案。
-- **字段说明**：每个字段带 hint，标注 tokens 影响（`includeRawContent` 显著增加 tokens/成本、`includeAnswer` 增加输出 tokens、`maxResults` 越多越耗、`searchDepth: advanced` 更慢更耗）。
+插件图标采用 harness 的 web-search 图形：`package.json` 声明 `"icon": "./icon.svg"`，与内置 `web-search` 图形的位置和形状一致。该 SVG 用线性渐变近似内置的 conic-gradient 圆环——内置实现用 `foreignObject` 绘制圆环，而清单图标以 `<img>` 渲染，`foreignObject` 在其中为空。
 
 ## 映射
 
