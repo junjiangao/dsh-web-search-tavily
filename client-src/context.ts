@@ -94,9 +94,8 @@ export interface CredentialsRemote {
   describe(refs: readonly string[]): Promise<RemoteResult<Record<string, CredentialInfoView | undefined>>>
 }
 
-/** The forwarded-event and namespace face of the remote service. */
+/** The forwarded-event face of the remote service. */
 export interface RemoteService {
-  readonly credentials: CredentialsRemote
   /**
    * Observe one Host-forwarded event.
    * @param event - the forwarded event name.
@@ -113,14 +112,22 @@ export interface Context {
   readonly configForms: ConfigForms
   /**
    * Read an optional service.
-   *
-   * The credentials domain is read this way on purpose: a deployment without
-   * it still renders the form and reports the key as unknown, rather than
-   * keeping the whole entry from activating.
    * @param name - the service name.
    * @returns the service, or undefined when this context does not provide it.
    */
   get(name: string): unknown
+  /**
+   * Run a callback once every named service is available.
+   *
+   * Remote namespaces mount asynchronously (`remote.$mount`), so reading one
+   * during `apply` can miss it. A soft dependency waits for the service
+   * without holding this entry back: a deployment that never provides it still
+   * activates, it just never gets the callback.
+   * @param names - the service names to await.
+   * @param callback - invoked with a context scoped to those services.
+   * @returns the child fiber, disposed with this plugin's.
+   */
+  inject(names: readonly string[], callback: (scoped: Context) => void): { dispose(): void }
   /**
    * Run a side effect for as long as the plugin's fiber lives.
    * @param callback - the effect; an optional returned disposer runs on unload.

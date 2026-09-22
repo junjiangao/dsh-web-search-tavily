@@ -23,7 +23,7 @@
 
 import { TavilyCard, type TavilyCardProps } from './card.tsx'
 import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from './controller.ts'
-import type { Context, RemoteService } from './context.ts'
+import type { Context, CredentialsRemote, RemoteService } from './context.ts'
 import { TAVILY_FIELDS } from './fields.ts'
 import { dictionaries, NS } from './locales.ts'
 
@@ -51,12 +51,19 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'web-search-tavily: dictionaries')
 
-  // Read rather than inject: a deployment without the credentials domain
-  // still renders the form and reports the key as unknown, instead of leaving
-  // this entry pending and the whole page short one plugin.
-  const remote = ctx.get('remote') as RemoteService | undefined
-  const controller = new TavilyCardController(ctx.configForms.get(TAVILY_SETTINGS_NS), remote)
+  const controller = new TavilyCardController(ctx.configForms.get(TAVILY_SETTINGS_NS))
   ctx.effect(() => () => { controller.dispose() }, 'web-search-tavily: form subscription')
+
+  // A soft dependency, not an injected one: the credentials namespace mounts
+  // asynchronously, so reading it during apply would race the mount, and a
+  // deployment that never mounts it still renders the form — it just has no
+  // key status to report.
+  ctx.inject(['remote', 'remote.credentials'], (scoped) => {
+    const remote = scoped.get('remote') as RemoteService | undefined
+    const credentials = scoped.get('remote.credentials') as CredentialsRemote | undefined
+    if (remote === undefined || credentials === undefined) return
+    controller.attachCredentials(remote, credentials)
+  })
 
   const face = {
     fields: TAVILY_FIELDS,

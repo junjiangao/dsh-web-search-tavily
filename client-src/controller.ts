@@ -20,7 +20,7 @@ import {
   type SettingsFieldState, type SettingsFormActions, type SettingsFormLabels,
   type SettingsFormScope, type SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { RemoteService } from './context.ts'
+import type { CredentialsRemote, RemoteService } from './context.ts'
 import { specOf, TAVILY_FIELDS, type TavilyField } from './fields.ts'
 
 /** Credential reference the provider resolves when the section names none. */
@@ -87,25 +87,38 @@ export class TavilyCardController {
   private readonly form: SettingsFormModel<TavilySettings>
   private readonly store: SnapshotStore<TavilyCardState>
   private credential: TavilyCredentialState | undefined
+  private credentials: CredentialsRemote | undefined
   private readonly disposers: Array<() => void> = []
 
   /**
    * @param scope - the bound configuration form for the `web-search-tavily` entry.
-   * @param remote - the remote service, when this deployment exposes the
-   * credentials domain; the card reports the key as unknown without it.
    */
-  constructor(private readonly scope: SettingsFormScope<TavilySettings>, remote?: RemoteService | undefined) {
+  constructor(private readonly scope: SettingsFormScope<TavilySettings>) {
     this.form = new SettingsFormModel(scope, TAVILY_FIELDS.map(field => specOf(field)))
     this.store = this.form.bind(() => this.projection())
-    if (remote === undefined) return
+  }
+
+  /**
+   * Start reporting the credential, once the deployment exposes the domain.
+   *
+   * Called when the remote namespaces are mounted rather than from the
+   * constructor: `remote.credentials` arrives asynchronously, and a read
+   * attempted before it exists would be indistinguishable from a read that
+   * answered "no key".
+   * @param remote - the remote service carrying the forwarded events.
+   * @param credentials - the mounted credentials namespace.
+   */
+  attachCredentials(remote: RemoteService, credentials: CredentialsRemote): void {
+    if (this.credentials !== undefined) return
+    this.credentials = credentials
     // The reference can change under the card (a saved edit or another
     // surface), and a key can be written without the section moving at all,
     // so both the scope and the forwarded credential event re-read it.
-    this.disposers.push(scope.subscribe(() => { void this.readCredential(remote) }))
+    this.disposers.push(this.scope.subscribe(() => { void this.readCredential() }))
     this.disposers.push(remote.$on('credentials/reference-updated', (ref) => {
-      if (ref === this.credential?.ref) void this.readCredential(remote)
+      if (ref === this.credential?.ref) void this.readCredential()
     }))
-    void this.readCredential(remote)
+    void this.readCredential()
   }
 
   /**
@@ -127,32 +140,33 @@ export class TavilyCardController {
    * names. The answer is stored with the reference it describes: the reference
    * can change between the request and its response, so a response is
    * published only while it still answers for the reference in force.
+   *
+   * Only an answer is published. A refused or failed read leaves the card
+   * without a credential line rather than claiming no key is configured, which
+   * is the one claim a broken read must never make: it would tell the user to
+   * set a key that is already there.
    */
-  private async readCredential(remote: RemoteService): Promise<void> {
+  private async readCredential(): Promise<void> {
+    const credentials = this.credentials
+    if (credentials === undefined) return
     const ref = refOf(this.section())
-    if (ref !== this.credential?.ref) {
-      // A new reference knows nothing yet; keeping the old answer would claim
-      // a key is configured under a name nobody has checked.
-      this.credential = { ref, configured: false, writable: true }
-      this.publish()
-    }
     try {
-      const response = await remote.credentials.describe([ref])
+      const response = await credentials.describe([ref])
       if (!response.ok || ref !== refOf(this.section())) return
       const view = response.value[ref]
+      if (view === undefined) return
       const next: TavilyCredentialState = {
         ref,
-        configured: view?.configured ?? false,
-        // An unknown reference stays writable: the Host is what refuses, and
-        // the page must not guess a refusal.
-        writable: view?.writable ?? true,
+        configured: view.configured,
+        writable: view.writable,
       }
-      if (next.configured === this.credential?.configured && next.writable === this.credential?.writable) return
+      if (next.configured === this.credential?.configured
+        && next.writable === this.credential?.writable
+        && next.ref === this.credential?.ref) return
       this.credential = next
       this.publish()
     } catch {
-      // A failed read leaves the last known answer standing; the form itself
-      // does not depend on it.
+      // The last known answer stands; the form itself does not depend on it.
     }
   }
 

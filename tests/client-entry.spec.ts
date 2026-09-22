@@ -25,6 +25,7 @@ interface Registration {
 function contextOf(remote?: unknown) {
   const registrations: Registration[] = []
   const injected: string[] = []
+  const awaited: string[][] = []
   const dictionaries: string[] = []
   const section = {
     status: 'ready' as const,
@@ -58,17 +59,31 @@ function contextOf(remote?: unknown) {
       },
     },
     get: (name: string) => name === 'remote' ? remote : undefined,
+    inject: (names: readonly string[], callback: (scoped: unknown) => void) => {
+      awaited.push([...names])
+      // A deployment that mounted neither namespace: the callback runs, finds
+      // nothing, and the card simply has no key status to report.
+      callback({ get: () => undefined })
+      return { dispose: () => {} }
+    },
     effect: (callback: () => void | (() => void)) => {
       const disposer = callback()
       return () => { if (typeof disposer === 'function') disposer() }
     },
   }
-  return { ctx, registrations, injected, dictionaries }
+  return { ctx, registrations, injected, awaited, dictionaries }
 }
 
 describe('client entry surfaces', () => {
   it('requires only the services both cards read', () => {
     expect(inject).toEqual(['slots', 'locale', 'configForms'])
+  })
+
+  it('waits for the credentials namespace instead of injecting it', () => {
+    const fake = contextOf()
+    apply(fake.ctx as never)
+    // Soft, so a deployment that never mounts the namespace still activates.
+    expect(fake.awaited).toEqual([['remote', 'remote.credentials']])
   })
 
   it('registers the Official group card and the bundle row control', () => {

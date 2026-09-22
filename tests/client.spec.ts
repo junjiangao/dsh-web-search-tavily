@@ -150,26 +150,35 @@ describe('TavilyCardController', () => {
 })
 
 /** A credentials domain answering from a mutable table, with its fanned-out events. */
-function remoteOf(answers: Record<string, { configured: boolean; writable: boolean } | undefined>) {
+function remoteOf(answers: Record<string, { configured: boolean; writable: boolean } | undefined>, ok = true) {
   const listeners = new Map<string, (ref: string) => void>()
   const described: string[][] = []
-  const remote = {
-    credentials: {
-      describe: async (refs: readonly string[]) => {
-        described.push([...refs])
-        return { ok: true, value: Object.fromEntries(refs.map(ref => [ref, answers[ref]])) }
-      },
+  const credentials = {
+    describe: async (refs: readonly string[]) => {
+      described.push([...refs])
+      return ok
+        ? { ok: true as const, value: Object.fromEntries(refs.map(ref => [ref, answers[ref]])) }
+        : { ok: false as const, value: {} }
     },
+  }
+  const remote = {
     $on: (event: string, listener: (ref: string) => void) => {
       listeners.set(event, listener)
       return () => { listeners.delete(event) }
     },
   }
-  return { remote, described, emit: (ref: string) => { for (const listener of listeners.values()) listener(ref) } }
+  return { remote, credentials, described, emit: (ref: string) => { for (const listener of listeners.values()) listener(ref) } }
+}
+
+/** A controller already attached to a fake credentials domain. */
+function attached(scope: SettingsFormScope<Record<string, unknown>>, fake: ReturnType<typeof remoteOf>) {
+  const controller = new TavilyCardController(scope)
+  controller.attachCredentials(fake.remote as never, fake.credentials as never)
+  return controller
 }
 
 describe('TavilyCardController credential status', () => {
-  it('reports no credential state when the deployment exposes no remote service', () => {
+  it('reports nothing until a credentials domain is attached', () => {
     const { scope } = scopeOf({ apiKeyEnv: 'TAVILY_API_KEY' })
     const controller = new TavilyCardController(scope)
     expect(controller.inject().store.getSnapshot().credential).toBeUndefined()
@@ -179,7 +188,7 @@ describe('TavilyCardController credential status', () => {
   it('reports the reference the section names as configured', async () => {
     const { scope } = scopeOf({ apiKeyEnv: 'MY_TAVILY_KEY' })
     const fake = remoteOf({ MY_TAVILY_KEY: { configured: true, writable: true } })
-    const controller = new TavilyCardController(scope, fake.remote)
+    const controller = attached(scope, fake)
     await vi.waitFor(() => {
       expect(controller.inject().store.getSnapshot().credential)
         .toEqual({ ref: 'MY_TAVILY_KEY', configured: true, writable: true })
@@ -190,7 +199,7 @@ describe('TavilyCardController credential status', () => {
 
   it('falls back to the provider default reference and reports it unconfigured', async () => {
     const { scope } = scopeOf({})
-    const controller = new TavilyCardController(scope, remoteOf({}).remote)
+    const controller = attached(scope, remoteOf({ TAVILY_API_KEY: { configured: false, writable: true } }))
     await vi.waitFor(() => {
       expect(controller.inject().store.getSnapshot().credential)
         .toEqual({ ref: 'TAVILY_API_KEY', configured: false, writable: true })
@@ -204,7 +213,7 @@ describe('TavilyCardController credential status', () => {
     }
     const fake = remoteOf(answers)
     const { scope } = scopeOf({})
-    const controller = new TavilyCardController(scope, fake.remote)
+    const controller = attached(scope, fake)
     await vi.waitFor(() => { expect(controller.inject().store.getSnapshot().credential?.configured).toBe(false) })
     answers.TAVILY_API_KEY = { configured: true, writable: true }
     fake.emit('TAVILY_API_KEY')
@@ -212,16 +221,36 @@ describe('TavilyCardController credential status', () => {
     controller.dispose()
   })
 
-  it('leaves the last answer standing when the read fails', async () => {
+  it('reports nothing when the Host refuses the read, never "not configured"', async () => {
     const { scope } = scopeOf({})
-    const remote = {
-      credentials: { describe: async () => { throw new Error('offline') } },
-      $on: () => () => {},
-    }
-    const controller = new TavilyCardController(scope, remote)
+    const controller = attached(scope, remoteOf({}, false))
     await Promise.resolve()
-    expect(controller.inject().store.getSnapshot().credential)
-      .toEqual({ ref: 'TAVILY_API_KEY', configured: false, writable: true })
+    await Promise.resolve()
+    expect(controller.inject().store.getSnapshot().credential).toBeUndefined()
+    controller.dispose()
+  })
+
+  it('reports nothing when the read throws, never "not configured"', async () => {
+    const { scope } = scopeOf({})
+    const controller = new TavilyCardController(scope)
+    controller.attachCredentials(
+      { $on: () => () => {} } as never,
+      { describe: async () => { throw new Error('offline') } } as never,
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(controller.inject().store.getSnapshot().credential).toBeUndefined()
+    controller.dispose()
+  })
+
+  it('attaches only once', async () => {
+    const { scope } = scopeOf({})
+    const first = remoteOf({ TAVILY_API_KEY: { configured: true, writable: true } })
+    const second = remoteOf({ TAVILY_API_KEY: { configured: false, writable: true } })
+    const controller = attached(scope, first)
+    controller.attachCredentials(second.remote as never, second.credentials as never)
+    await vi.waitFor(() => { expect(controller.inject().store.getSnapshot().credential?.configured).toBe(true) })
+    expect(second.described).toEqual([])
     controller.dispose()
   })
 })
