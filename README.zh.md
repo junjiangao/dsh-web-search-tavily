@@ -62,7 +62,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 | 分组 | 配置键 | 默认值 | 含义 |
 |---|---|---|---|
 | 凭据 | `apiKey` | （无） | Tavily API 密钥字面量。优先用 `apiKeyEnv`/凭据服务，避免密钥进配置文件；存入设置的字面量在设置描述中会被脱敏。 |
-| 凭据 | `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。 |
+| 凭据 | `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。必须匹配凭据语法（`^[A-Za-z_][A-Za-z0-9_]*$`）；不合语法的名字会让搜索以 `TAVILY_INVALID_CREDENTIAL_REF` 失败，而不是被静默读作“未配置密钥”。 |
 | 检索 | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`。精度/延迟/成本的主开关。 |
 | 检索 | `includeDomains` | `[]` | 限定域名列表，发送为 `include_domains`；空列表不发送。 |
 | 检索 | `excludeDomains` | `[]` | 排除域名列表，发送为 `exclude_domains`；空列表不发送。 |
@@ -137,7 +137,7 @@ shell 通过冻结模块表共享**组件**，但不共享它的 CSS module，�
 
 ## 模型体验
 
-经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（消息取 Tavily 错误体，含 keyless 限流信封）；取消以 `WEB_ABORTED` 呈现。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
+经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（消息取 Tavily 错误体，含 keyless 限流信封）；取消以 `WEB_ABORTED` 呈现；`apiKeyEnv` 不合凭据语法时以 `TAVILY_INVALID_CREDENTIAL_REF` 呈现，消息里点名该设置及其取值。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
 
 #### KV Cache 影响
 

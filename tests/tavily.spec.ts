@@ -654,6 +654,28 @@ describe('web-search-tavily plugin registration', () => {
     expect((init.headers as Record<string, string>)['x-tavily-access-mode']).toBe('keyless')
     await fiber.dispose()
   })
+
+  it('classifies an apiKeyEnv outside the credential grammar as a web error, not a bare TypeError', async () => {
+    const { ctx, fiber } = await mount({ apiKeyEnv: 'my key' })
+    // `credentialRef` answers a name outside the grammar with a bare
+    // `TypeError`, which carries no routable `code` and never names the setting
+    // that is wrong. The seam's callers route on `code`, so it is reported as a
+    // web error instead — and at use time, not at load, so a typo cannot take
+    // the plugin (or the settings card that fixes it) down at boot.
+    await expect(ctx.web.search({ query: 'q' })).rejects.toThrow(expect.objectContaining({
+      code: 'TAVILY_INVALID_CREDENTIAL_REF',
+      message: expect.stringContaining('apiKeyEnv "my key"'),
+    }))
+    await fiber.dispose()
+  })
+
+  it('accepts a reference inside the grammar and stays keyless while it is unset', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { ctx, fiber } = await mount({ apiKeyEnv: 'MY_TAVILY_KEY' })
+    await expect(ctx.web.search({ query: 'q' })).resolves.toMatchObject({ sources: [], truncated: false })
+    await fiber.dispose()
+  })
 })
 
 describe('web-search-tavily provider selection with multiple providers', () => {

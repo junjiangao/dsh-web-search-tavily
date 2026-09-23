@@ -17,12 +17,10 @@
  */
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-// Type-only import keeps the seam's cordis service augmentation visible
-// (`ctx.web`) without adding a runtime edge.
-import type {} from '@deepseek-ai/dsh-web'
+import { WebError } from '@deepseek-ai/dsh-web'
 import {
   TAVILY_DEFAULT_BASE_URL,
   TAVILY_DEFAULT_SEARCH_DEPTH,
@@ -184,6 +182,19 @@ export const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'
 function resolveOptions(
   ctx: Context, config: { [K in keyof Config]: ReturnType<Config[K]['get']> },
 ): TavilySearchProviderOptions {
+  // A reference outside the credential grammar has nothing to resolve, and
+  // `credentialRef` answers that with a bare `TypeError` — outside the seam's
+  // error vocabulary, so a caller cannot route on it and the message never
+  // names the setting that is wrong. Reported here instead, at use time rather
+  // than at load: a typo must not take the plugin (and the settings card that
+  // fixes it) down at boot.
+  if (!isCredentialRefName(config.apiKeyEnv)) {
+    throw new WebError(
+      `Tavily search: apiKeyEnv "${config.apiKeyEnv}" is not a credential reference name`
+      + ` (expected an environment-variable name such as ${DEFAULT_API_KEY_ENV})`,
+      'TAVILY_INVALID_CREDENTIAL_REF',
+    )
+  }
   // The schema default guarantees both values; the constants stay for defaults.
   const apiKeyEnv = credentialRef(config.apiKeyEnv)
   const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0

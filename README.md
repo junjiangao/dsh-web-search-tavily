@@ -62,7 +62,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 | Section | Key | Default | Meaning |
 |---|---|---|---|
 | Credentials | `apiKey` | (none) | Literal Tavily API key. Prefer `apiKeyEnv`/credentials so no secret enters configuration files; a stored literal is redacted from settings descriptions. |
-| Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. |
+| Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. Must match the credential grammar (`^[A-Za-z_][A-Za-z0-9_]*$`); a name outside it fails the search with `TAVILY_INVALID_CREDENTIAL_REF` instead of silently reading as "no key". |
 | Retrieval | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`. The main precision/latency/cost switch. |
 | Retrieval | `includeDomains` | `[]` | Domain list sent as `include_domains`; an empty list is omitted. |
 | Retrieval | `excludeDomains` | `[]` | Domain list sent as `exclude_domains`; an empty list is omitted. |
@@ -137,7 +137,7 @@ The plugin artwork is the harness web-search glyph: `package.json` declares `"ic
 
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`. Credential-bearing requests reject redirects before the `Location` target is contacted.
+Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`; an `apiKeyEnv` outside the credential grammar surfaces as `TAVILY_INVALID_CREDENTIAL_REF`, whose message names the setting and its value. Credential-bearing requests reject redirects before the `Location` target is contacted.
 
 #### KV Cache effect
 
