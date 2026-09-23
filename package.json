@@ -1,6 +1,6 @@
 {
   "name": "@junjiangao/dsh-web-search-tavily",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, and the native dsh 0.1.7 plugin configuration form",
   "keywords": [
     "dsh-plugin",
@@ -30,11 +30,13 @@
       "default": "./lib/client.js"
     },
     "./src/*": "./src/*",
+    "./locale/*.json": "./locale/*.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "icon.svg"
   ],
@@ -76,6 +78,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.3",
     "@deepseek-ai/cordis-plugin-loader": "^1.0.4",
+    "@deepseek-ai/dsh-client-store": "0.1.7-alpha.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.7-alpha.2",
     "@deepseek-ai/dsh-credentials": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-credentials-local": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-invariants": "^0.1.7-alpha.1",
@@ -83,8 +87,10 @@
     "@deepseek-ai/dsh-llm": "^0.1.7-alpha.1",
     "@deepseek-ai/dsh-web": "^0.1.7-alpha.1",
     "@types/node": "^22.20.0",
+    "@types/react": "^18.3.31",
     "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "^0.28.2",
+    "react": "^18.3.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

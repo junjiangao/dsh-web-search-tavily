@@ -128,6 +128,8 @@ shell 通过冻结模块表共享**组件**，但不共享它的 CSS module，�
 
 插件图标采用 harness 的 web-search 图形：`package.json` 声明 `"icon": "./icon.svg"`，与内置 `web-search` 图形的位置和形状一致。该 SVG 用线性渐变近似内置的 conic-gradient 圆环——内置实现用 `foreignObject` 绘制圆环，而清单图标以 `<img>` 渲染，`foreignObject` 在其中为空。
 
+插件页读取本插件的显示文案来自 `locale/en.json`（Host 首先解析的锚点）以及同目录下的每种语言一个文件，各自携带 `meta.title` 与 `meta.description`。这些文件是**通过包说明符**解析的，因此 `exports` 里要有 `"./locale/*.json"`、`files` 里要有 `locale/*.json`；一个没有导出的 locale 文件对插件页等于不存在。缺失时回退到未翻译的 `package.json` `name` 与 `description`。插件自己卡片里的文案则来自 client 词典（`client-src/locales.ts`），新增文案时两处都要写。
+
 ## 映射
 
 - `answer`（启用 `includeAnswer` 时）→ `content`。
@@ -154,6 +156,8 @@ pnpm test:e2e     # 真实 API smoke；无 $TAVILY_API_KEY 时自跳过
 ```
 
 与 harness 仓库内包（继承 `tsconfig.base.json`、产出 `lib/types` + 打包的 `lib/index.js`）不同，本独立仓库用单次 `tsc` 产出 `lib/`，公开 API 不变。若要放入 `deepseek-harness/packages/web/web-search-tavily`，把 peer/dev 依赖改为 `workspace:^` 并按 harness 布局调整 tsconfig。
+
+client 半是按**真实**的已发布 client 包做类型检查的——`react`、`@types/react`、`@deepseek-ai/dsh-client-store`、`@deepseek-ai/dsh-client-ui-primitives` 是仅开发期的依赖，版本对齐 shell 实际发布的那一版。它们不会进入 bundle（`lib/client.js` 把它们保持为 external，运行时由 shell 的冻结模块表提供），但 `pnpm typecheck` 现在会在属性名、可选性或导出发生漂移时失败，而不是由手写声明悄悄接受。单元测试仍然跑本地 stub（`tests/stubs/`，在 `vitest.config.ts` 里 alias），因为它们需要的是可断言元素树，而不是浏览器。
 
 ## 已知限制与暂缓事项
 

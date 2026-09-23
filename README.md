@@ -128,6 +128,8 @@ The shell shares its **components** through the frozen module table but not its 
 
 The plugin artwork is the harness web-search glyph: `package.json` declares `"icon": "./icon.svg"`, the same position and shape the built-in `web-search` artwork uses. The SVG approximates the built-in conic-gradient ring with a linear gradient, because the harness paints that ring with a `foreignObject` that stays empty inside the `<img>` a manifest icon renders as.
 
+The Plugins page reads this plugin's display text from `locale/en.json` — the anchor the Host resolves first — plus one file per language beside it, each carrying `meta.title` and `meta.description`. Both files are read through the package specifier, so `exports` maps `"./locale/*.json"` and `files` carries `locale/*.json`; a locale file that is not exported is metadata the page never sees. Without them the page falls back to the untranslated `package.json` `name` and `description`. The plugin's own card text comes from the client dictionaries instead (`client-src/locales.ts`), so a new string belongs in both places.
+
 ## Mapping
 
 - `answer` (when `includeAnswer` is enabled) → `content`.
@@ -154,6 +156,8 @@ pnpm test:e2e     # real-API smoke; self-skips without $TAVILY_API_KEY
 ```
 
 Unlike harness in-repo packages (which extend `tsconfig.base.json` and build `lib/types` + bundled `lib/index.js`), this standalone package builds with a single `tsc` pass into `lib/`. The published API is unchanged. To vendor it into `deepseek-harness/packages/web/web-search-tavily`, switch the peer/dev dependencies to `workspace:^` and adjust the tsconfig to the harness layout.
+
+The client half is typechecked against the **real** published client packages — `react`, `@types/react`, `@deepseek-ai/dsh-client-store`, and `@deepseek-ai/dsh-client-ui-primitives` are dev-only dependencies pinned to the version the shell ships. Nothing about them reaches the bundle (`lib/client.js` keeps them external and the shell resolves them from its frozen module table), but `pnpm typecheck` now fails when a prop name, an optionality, or an export drifts instead of a hand-written declaration quietly accepting it. The unit tests still run against local stubs (`tests/stubs/`, aliased in `vitest.config.ts`) because they need an inspectable element tree, not a browser.
 
 ## Known Limitations and Deferred Work
 

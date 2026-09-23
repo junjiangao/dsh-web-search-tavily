@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tavily Web Search",
+    "description": "Tavily-backed search provider for the harness web seam: keyless mode, every official search parameter, and the native configuration form."
+  }
+}

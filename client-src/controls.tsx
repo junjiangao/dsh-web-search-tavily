@@ -9,6 +9,7 @@
  */
 
 import { Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ReactNode } from 'react'
 import { TAVILY_CLASS } from './styles.ts'
 
 /** Props shared by the card's own controls. */
@@ -39,7 +40,7 @@ export interface TavilyControlProps {
  * @param props.children - the field's control.
  * @returns the row.
  */
-export function TavilyRow(props: { readonly children?: unknown }) {
+export function TavilyRow(props: { readonly children?: ReactNode }) {
   return <div className={TAVILY_CLASS.row}>{props.children}</div>
 }
 

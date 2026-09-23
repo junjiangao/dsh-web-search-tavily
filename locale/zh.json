@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tavily 网页搜索",
+    "description": "为 harness 的 web seam 提供 Tavily 搜索：支持无密钥模式、全部官方搜索参数与原生配置表单。"
+  }
+}
