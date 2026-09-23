@@ -42,10 +42,20 @@ export const TAVILY_BUNDLE = '@junjiangao/dsh-web-search-tavily'
 export const TAVILY_ROW_ID = 'web-search-tavily'
 
 /**
- * The `plugins.row.config` key of this plugin's row: the page dispatches
- * `<package name>#<row id>` exactly as the bundle patch declares both.
+ * The `plugins.row.config` key of this plugin's row under one bundle name.
+ * @param bundle - the name the profile installs the bundle under.
+ * @returns the key the Plugins page dispatches that row's page by.
  */
-export const TAVILY_ROW_CONFIG_KEY = `${TAVILY_BUNDLE}#${TAVILY_ROW_ID}`
+export function tavilyRowConfigKey(bundle: string): string {
+  return `${bundle}#${TAVILY_ROW_ID}`
+}
+
+/**
+ * The `plugins.row.config` key of this plugin's row under the package's own
+ * name. The page dispatches the name the profile declares, which is this one
+ * unless the profile installs the package under an alias.
+ */
+export const TAVILY_ROW_CONFIG_KEY = tavilyRowConfigKey(TAVILY_BUNDLE)
 
 /** The section shape the form stages over; values are read field by field. */
 export type TavilySettings = Record<string, unknown>

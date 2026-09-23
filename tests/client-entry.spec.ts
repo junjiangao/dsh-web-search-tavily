@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../client-src/client.ts'
 import { TavilyCredentialStatus } from '../client-src/controls.tsx'
-import { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY } from '../client-src/controller.ts'
+import { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_ROW_ID } from '../client-src/controller.ts'
 import { NS } from '../client-src/locales.ts'
 
 /** One registration as the entry made it. */
@@ -56,6 +56,7 @@ function controlPropsOf(page: unknown): Map<string, Record<string, unknown>> {
 function contextOf(options: {
   remote?: unknown
   credentials?: unknown
+  manager?: unknown
   value?: Record<string, unknown>
 } = {}) {
   const registrations: Registration[] = []
@@ -70,16 +71,34 @@ function contextOf(options: {
     writable: true,
     revision: 1,
   }
+  const services: Record<string, unknown> = {
+    remote: options.remote,
+    'remote.credentials': options.credentials,
+    'remote.pluginManager': options.manager,
+  }
   const ctx = {
     locale: {
       register: (namespace: string) => { dictionaries.push(namespace) },
       bind: (namespace: string) => (key: string) => `${namespace}.${key}`,
     },
     slots: {
-      inject: (name: string, factory: () => unknown) => { injected.push(name); factory() },
+      inject: (name: string, factory: () => unknown) => {
+        injected.push(name)
+        // The real service installs the factory as an effect per declaration
+        // lifetime and returns an idempotent disposer for the wait; the factory
+        // itself returns the registration's disposer.
+        const dispose = factory()
+        return () => { if (typeof dispose === 'function') dispose() }
+      },
       register: (options_: Registration['options'], component: Registration['component']) => {
-        registrations.push({ options: options_, component })
-        return { dispose: () => {} }
+        const entry = { options: options_, component }
+        registrations.push(entry)
+        // The real register wraps the entry in the caller's effect and returns
+        // that effect's disposer, so a re-key under a new name can retire it.
+        return () => {
+          const index = registrations.indexOf(entry)
+          if (index >= 0) registrations.splice(index, 1)
+        }
       },
     },
     configForms: {
@@ -89,16 +108,18 @@ function contextOf(options: {
         mutate: async () => true,
       }),
       whileServed: (namespaces: readonly string[], register: (served: ReadonlySet<string>) => () => void) => {
-        register(new Set(namespaces))
-        return () => {}
+        const dispose = register(new Set(namespaces))
+        // The real service runs the entry's disposer when no namespace is
+        // served any more; a re-key under a new name relies on that.
+        return () => { if (typeof dispose === 'function') dispose() }
       },
     },
-    get: (name: string) => name === 'remote' ? options.remote : undefined,
+    get: (name: string) => services[name],
     inject: (names: readonly string[], callback: (scoped: unknown) => void) => {
       awaited.push([...names])
-      // A deployment that mounted neither namespace: the callback runs, finds
+      // A deployment that mounted neither namespace runs the callback, finds
       // nothing, and the card simply has no key status to report.
-      callback({ get: (name: string) => name === 'remote' ? options.remote : options.credentials })
+      callback({ get: (name: string) => services[name] })
       return { dispose: () => {} }
     },
     effect: (callback: () => void | (() => void)) => {
@@ -114,11 +135,11 @@ describe('client entry surfaces', () => {
     expect(inject).toEqual(['slots', 'locale', 'configForms'])
   })
 
-  it('waits for the credentials namespace instead of injecting it', () => {
+  it('waits for the credentials and manager namespaces instead of injecting them', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
-    // Soft, so a deployment that never mounts the namespace still activates.
-    expect(fake.awaited).toEqual([['remote', 'remote.credentials']])
+    // Soft, so a deployment that never mounts either namespace still activates.
+    expect(fake.awaited).toEqual([['remote', 'remote.credentials'], ['remote', 'remote.pluginManager']])
   })
 
   it('registers the bundle configuration and the bundle row control', () => {
@@ -132,12 +153,47 @@ describe('client entry surfaces', () => {
     expect(fake.injected).toEqual(['plugins.bundle.config', 'plugins.row.config'])
 
     const bundle = fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')
-    // The page dispatches the package name the profile selects: that is what
-    // puts the form on the bundle's own page, one click from the list.
+    // With no manager answering, the package's own name is the key.
     expect(bundle?.options.key).toBe(TAVILY_BUNDLE)
 
     const row = fake.registrations.find(entry => entry.options.name === 'plugins.row.config')
     expect(row?.options.key).toBe(TAVILY_ROW_CONFIG_KEY)
+  })
+
+  it('re-keys both surfaces to the name the profile declares', async () => {
+    // A profile that installed this package before the rename still declares it
+    // as `@deepseek-ai/dsh-web-search-tavily`, and the Plugins page dispatches
+    // that declared name — not the package's own — for both configuration
+    // surfaces. A real-name key therefore renders nothing at all.
+    const declared = '@deepseek-ai/dsh-web-search-tavily'
+    const manager = {
+      listBundles: async () => ({
+        ok: true,
+        value: [
+          { name: 'dsh-web-mcp-manager', rows: [{ rowId: 'web-mcp-manager', moduleName: 'dsh-web-mcp-manager' }] },
+          { name: declared, rows: [{ rowId: TAVILY_ROW_ID, moduleName: TAVILY_BUNDLE }] },
+        ],
+      }),
+    }
+    const fake = contextOf({ manager })
+    apply(fake.ctx as never)
+    await vi.waitFor(() => {
+      expect(fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')?.options.key)
+        .toBe(declared)
+    })
+    const row = fake.registrations.find(entry => entry.options.name === 'plugins.row.config')
+    expect(row?.options.key).toBe(`${declared}#${TAVILY_ROW_ID}`)
+    // The package-name registrations are gone, not shadowed by a second pair.
+    expect(fake.registrations).toHaveLength(2)
+  })
+
+  it('keeps the package-name keys when the manager refuses to answer', () => {
+    const manager = { listBundles: async () => { throw new Error('no management') } }
+    const fake = contextOf({ manager })
+    apply(fake.ctx as never)
+    expect(fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')?.options.key)
+      .toBe(TAVILY_BUNDLE)
+    expect(fake.registrations).toHaveLength(2)
   })
 
   it('renders a summary and a form through both cards', () => {

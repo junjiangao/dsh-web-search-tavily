@@ -7,13 +7,18 @@
  * namespace, it registers the entry's form into the surfaces dsh reserves for a
  * bundle's own configuration.
  *
- * `plugins.bundle.config` carries the form on this bundle's own page, keyed by
- * the package name the profile selects, so the settings sit directly under the
- * description — one click from the Plugins list. `plugins.row.config` carries
- * the configure control on the row this bundle's patch inserts, keyed
- * `<package>#<row id>`, which opens the same form under its own page. Both
- * render the same form over the same namespace, so a save from either lands in
- * the same place.
+ * `plugins.bundle.config` carries the form on this bundle's own page, so the
+ * settings sit directly under the description — one click from the Plugins
+ * list. `plugins.row.config` carries the configure control on the row this
+ * bundle's patch inserts, keyed `<bundle name>#<row id>`, which opens the same
+ * form under its own page. Both render the same form over the same namespace,
+ * so a save from either lands in the same place.
+ *
+ * Both keys address the *declared* bundle name: the Plugins page dispatches the
+ * name the profile installs the bundle under, which is an alias of the package
+ * name whenever the profile predates a rename. The manager's bundle list is
+ * therefore read for the entry whose row loads this package, and the surfaces
+ * are keyed to the name it reports.
  *
  * It deliberately registers nothing into `plugins.item`: that slot lists the
  * official host-plane settings pages beside the official bundles, and any card
@@ -30,8 +35,8 @@
  */
 
 import { TavilyCard, type TavilyCardProps } from './card.tsx'
-import { TavilyCardController, TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from './controller.ts'
-import type { Context, CredentialsRemote, RemoteService } from './context.ts'
+import { TavilyCardController, TAVILY_BUNDLE, TAVILY_ROW_ID, TAVILY_SETTINGS_NS, tavilyRowConfigKey } from './controller.ts'
+import type { Context, CredentialsRemote, PluginManagerRemote, RemoteService } from './context.ts'
 import { TAVILY_FIELDS } from './fields.ts'
 import { dictionaries, NS } from './locales.ts'
 import { installTavilyStyles } from './styles.ts'
@@ -91,24 +96,57 @@ export function apply(ctx: Context): void {
 
   const card = (props: TavilyCardProps) => TavilyCard(props, face)
 
-  ctx.effect(() => ctx.configForms.whileServed([TAVILY_SETTINGS_NS], () => {
-    // The bundle's own configuration, on the bundle's page between its
-    // description and its rows. The page dispatches this exact key — the
-    // package name the profile selects — so the form needs no extra click.
-    const bundle = ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
-      { name: 'plugins.bundle.config', key: TAVILY_BUNDLE },
-      card,
-    ))
-    // The configure control on the row this bundle's patch inserts.
-    const row = ctx.slots.inject('plugins.row.config', () => ctx.slots.register(
-      { name: 'plugins.row.config', key: TAVILY_ROW_CONFIG_KEY },
-      card,
-    ))
-    // The shell's inject returns the registration's disposer; a shell that
-    // returns nothing still owns the registration through the context.
-    return () => {
-      if (typeof bundle === 'function') bundle()
-      if (typeof row === 'function') row()
-    }
-  }), 'web-search-tavily: bundle configuration surfaces')
+  // The name the Plugins page dispatches both configuration surfaces by: the
+  // name the profile installs this bundle under. That is the package's own name
+  // unless the profile aliases the install — a profile that predates a package
+  // rename keeps the old key — and the page reports the declared name, so the
+  // package's own name is the fallback until the Host answers.
+  let bundleName = TAVILY_BUNDLE
+  let surfaces: (() => void) | undefined
+
+  /** Register both surfaces under the name in force, re-keying on a change. */
+  const mount = (): void => {
+    surfaces?.()
+    surfaces = ctx.effect(() => ctx.configForms.whileServed([TAVILY_SETTINGS_NS], () => {
+      // The bundle's own configuration, on the bundle's page between its
+      // description and its rows, so the form needs no extra click.
+      const bundle = ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
+        { name: 'plugins.bundle.config', key: bundleName },
+        card,
+      ))
+      // The configure control on the row this bundle's patch inserts.
+      const row = ctx.slots.inject('plugins.row.config', () => ctx.slots.register(
+        { name: 'plugins.row.config', key: tavilyRowConfigKey(bundleName) },
+        card,
+      ))
+      // The shell's inject returns the registration's disposer; a shell that
+      // returns nothing still owns the registration through the context.
+      return () => {
+        if (typeof bundle === 'function') bundle()
+        if (typeof row === 'function') row()
+      }
+    }), 'web-search-tavily: bundle configuration surfaces')
+  }
+
+  mount()
+
+  // A soft dependency, like the credentials namespace: a deployment with no
+  // plugin manager keeps the package-name keys and simply shows no card. When
+  // the manager answers, a bundle the profile installed under another name is
+  // re-keyed to the name the page dispatches.
+  ctx.inject(['remote', 'remote.pluginManager'], (scoped) => {
+    const manager = scoped.get('remote.pluginManager') as PluginManagerRemote | undefined
+    if (manager === undefined) return
+    void manager.listBundles().then((answer) => {
+      if (!answer.ok) return
+      const declared = answer.value.find(bundle => bundle.rows?.some(
+        row => row.rowId === TAVILY_ROW_ID && row.moduleName === TAVILY_BUNDLE,
+      ))
+      if (declared === undefined || declared.name === bundleName) return
+      bundleName = declared.name
+      mount()
+    }).catch(() => {
+      // The package-name keys stand; the card is re-keyed on the next load.
+    })
+  })
 }

@@ -37,13 +37,19 @@ export interface SlotRegistrationOptions {
 
 /** The slots service's share used here. */
 export interface SlotsService {
-  /** Register one component into a slot. */
-  register(options: SlotRegistrationOptions, component: unknown): { dispose(): void }
   /**
-   * Keep a registration alive for as long as this context lives.
-   * @returns the disposer removing it; some shells return nothing.
+   * Register one component into a slot; the shell ties it to this context.
+   * @returns the disposer removing the registration.
    */
-  inject(name: string, factory: () => { dispose(): void }): (() => void) | void
+  register(options: SlotRegistrationOptions, component: unknown): () => void
+  /**
+   * Install a registration for each declaration lifetime of a slot: the factory
+   * runs once the slot is declared, and runs again after a collapse.
+   * @param name - slot name.
+   * @param factory - creates the registration's disposer.
+   * @returns the idempotent disposer stopping the wait; some shells return nothing.
+   */
+  inject(name: string, factory: () => () => void): (() => void) | void
 }
 
 /** The configuration form of one Host plugin entry. */
@@ -93,6 +99,35 @@ export interface CredentialsRemote {
    * @returns each reference's configured/writable state.
    */
   describe(refs: readonly string[]): Promise<RemoteResult<Record<string, CredentialInfoView | undefined>>>
+}
+
+/** One row of a bundle, as the plugin manager lists it. */
+export interface ManagedBundleRow {
+  /** The row id the bundle's patch declares. */
+  readonly rowId: string
+  /** The module the row loads. */
+  readonly moduleName: string
+}
+
+/** One bundle, as the plugin manager lists it. */
+export interface ManagedBundle {
+  /**
+   * The name the profile installs the bundle under — its dependency key, which
+   * is also the name the Plugins page dispatches this bundle's configuration
+   * by. It is the package's own name unless the profile aliases the install.
+   */
+  readonly name: string
+  /** The rows the bundle declares. */
+  readonly rows?: readonly ManagedBundleRow[]
+}
+
+/** The plugin-manager remote, as far as this bundle reads it. */
+export interface PluginManagerRemote {
+  /**
+   * List the bundles the profile declares, installed or optional.
+   * @returns each bundle's declared name and rows.
+   */
+  listBundles(): Promise<RemoteResult<readonly ManagedBundle[]>>
 }
 
 /** The forwarded-event face of the remote service. */
