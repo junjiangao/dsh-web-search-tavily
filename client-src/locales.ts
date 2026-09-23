@@ -10,7 +10,6 @@
 export const NS = 'webSearchTavily'
 
 const zh: Record<string, string> = {
-  title: 'Tavily 搜索',
   summary: '通过 Tavily 提供网络搜索；未配置密钥时进入无密钥模式。',
   credentialConfigured: '密钥已配置',
   credentialUnset: '密钥未配置，将使用无密钥模式',
@@ -49,7 +48,6 @@ const zh: Record<string, string> = {
 }
 
 const en: Record<string, string> = {
-  title: 'Tavily search',
   summary: 'Serves web search through Tavily; runs keyless until a key is configured.',
   credentialConfigured: 'Key configured',
   credentialUnset: 'No key configured, searches run keyless',

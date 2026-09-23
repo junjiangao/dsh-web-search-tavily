@@ -1,11 +1,12 @@
 /**
  * The slice of the browser plugin context this bundle consumes.
  *
- * Spelled locally rather than imported from `@deepseek-ai/cordis`: a client
- * bundle resolves its services from the shell's module table at runtime and
- * the plugin repo installs no client package, so the ambient declarations in
- * `env.d.ts` are the whole compile-time surface. Cordis calls `apply(ctx)`
- * with the real context; only the members below are touched.
+ * Spelled locally rather than imported from `@deepseek-ai/cordis`: the bundle
+ * resolves its services from the shell's module table at runtime, and only the
+ * members below are touched. Where the shell's own packages describe a value
+ * the bundle passes through — the settings primitives' form scope and path ops
+ * — their types are imported rather than restated, from dev-only dependencies
+ * pinned to the version the shell ships.
  */
 
 import type { SettingsFormPathOp, SettingsFormScopeSnapshot } from '@deepseek-ai/dsh-client-ui-primitives'

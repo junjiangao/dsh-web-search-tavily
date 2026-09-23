@@ -4,19 +4,21 @@
  *
  * The Host half owns the Loader entry, its schema, and the search provider.
  * This half owns exactly one thing: while the Host serves the
- * `web-search-tavily` namespace, it registers the entry's form into two
- * surfaces of the Plugins page.
+ * `web-search-tavily` namespace, it registers the entry's form into the
+ * `plugins.row.config` surface of the Plugins page — the configure control on
+ * the row this bundle's patch inserts, keyed `<package>#<row id>`, which is
+ * where dsh documents a bundle's own configuration.
  *
- * `plugins.item` carries the card the Official group shows, so the page opens
- * the form in one click — the same path the shipped provider pages take, and
- * the one that needs no knowledge of which bundle a row arrived in.
- * `plugins.row.config` carries the configure control on the row this bundle's
- * patch inserts, keyed `<package>#<row id>`, which is where dsh documents a
- * bundle's own configuration. Both render the same form over the same
- * namespace, so a save from either lands in the same place.
+ * It deliberately registers nothing into `plugins.item`. That slot's cards take
+ * their artwork from a map keyed to the four shipped item ids (`shell`,
+ * `agent-loop`, `subagent`, `web-search`), so a card registered by any other
+ * plugin renders the default glyph no matter what its manifest declares; the
+ * row and bundle surfaces render the manifest `icon` instead. One entry point
+ * that shows this plugin's own icon beats two that show the same form under two
+ * different artworks.
  *
- * A deployment without the provider shows no trace of either, and the cards
- * disappear with the entry rather than rendering a form nothing would accept.
+ * A deployment without the provider shows no trace of it, and the card
+ * disappears with the entry rather than rendering a form nothing would accept.
  *
  * @module @junjiangao/dsh-web-search-tavily/client
  */
@@ -41,9 +43,6 @@ export { NS }
 
 /** Required client services (cordis fiber inject). */
 export const inject = ['slots', 'locale', 'configForms']
-
-/** Position of this card among the Official group's items, after the shipped pages. */
-export const TAVILY_ITEM_ORDER = 45
 
 /**
  * Mount the provider's configuration card while the Host serves its namespace.
@@ -87,20 +86,8 @@ export function apply(ctx: Context): void {
   const card = (props: TavilyCardProps) => TavilyCard(props, face)
 
   ctx.effect(() => ctx.configForms.whileServed([TAVILY_SETTINGS_NS], () => {
-    // The card the Plugins page lists in its Official group. Its id is the
-    // namespace the Host serves, which is what lets the page hand this entry's
-    // configuration form to the card when the card is opened.
-    const item = ctx.slots.inject('plugins.item', () => ctx.slots.register(
-      {
-        name: 'plugins.item',
-        id: TAVILY_SETTINGS_NS,
-        order: TAVILY_ITEM_ORDER,
-        label: () => t('title'),
-        locale: NS,
-      },
-      card,
-    ))
-    // The configure control on the bundle row itself.
+    // The configure control on the bundle row itself: the only surface this
+    // card registers, and the one that renders the manifest icon.
     const row = ctx.slots.inject('plugins.row.config', () => ctx.slots.register(
       { name: 'plugins.row.config', key: TAVILY_ROW_CONFIG_KEY },
       card,
@@ -108,8 +95,7 @@ export function apply(ctx: Context): void {
     // The shell's inject returns the registration's disposer; a shell that
     // returns nothing still owns the registration through the context.
     return () => {
-      if (typeof item === 'function') item()
       if (typeof row === 'function') row()
     }
-  }), 'web-search-tavily: configuration surfaces')
+  }), 'web-search-tavily: configuration surface')
 }

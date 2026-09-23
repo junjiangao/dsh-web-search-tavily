@@ -118,7 +118,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 
 ## 设置表单与凭据
 
-host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进插件页的两个位置。`plugins.item` 承载 Official 分组里的卡片——其 id 就是 Host 提供的 `web-search-tavily` 命名空间，因此插件页能把该条目的表单交给被打开的卡片，设置一次点击即可进入，与官方提供方页面一致。`plugins.row.config` 承载该 bundle 补丁插入的那一行上的配置入口，键为 `<包名>#<行 id>`（`@junjiangao/dsh-web-search-tavily#web-search-tavily`）。两者渲染同一命名空间的同一张表单，任一处保存都落到同一位置。每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
+host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进插件页的 `plugins.row.config` 位置——该 bundle 补丁插入的那一行上的配置入口，键为 `<包名>#<行 id>`（`@junjiangao/dsh-web-search-tavily#web-search-tavily`），这正是 dsh 为 bundle 自身配置规定的入口。这一个注册同时服务该行详情页的两种视图：`summary` 是它的一句话说明，`page` 是表单。它**刻意不注册** `plugins.item`：那种卡片的图形取自一张按四个内置条目 id（`shell`、`agent-loop`、`subagent`、`web-search`）索引的表，任何其他插件注册的卡片无论清单里声明什么图标都只会渲染默认图形，而行与 bundle 两个位置渲染的是清单里的 `icon`。一个显示本插件自己图标的入口，胜过两个把同一张表单显示成两种图形的入口。每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
@@ -168,6 +168,8 @@ client 半是按**真实**的已发布 client 包做类型检查的——`react`
 - **`safe_search` 与 `fast`/`ultra-fast` 互斥**——该组合由 Tavily 返回 400（`Safe search parameter is not supported for fast or ultra-fast search_depth.`），插件不拦截，错误消息原样呈现。
 - **选择归用户所有**：安装本 bundle 只注册提供方；固定 `searchProvider: tavily` 是 profile 层的决定（见上文）。
 - **中止按 signal 分类**：fetch 中止或已中止的 signal 映射为 `WEB_ABORTED`。
+- **设置从行进入，而非 Official 分组卡片**——需要两次点击（插件页 → 该 bundle 行），而非一次。若同时注册 `plugins.item` 可恢复一次点击，代价是多出一张永远显示默认图形的卡片：该 slot 的图形映射表按四个内置条目 id 索引。
+- **本 bundle 里名为 `ref` 的 prop 是陷阱**：React 独占每个元素上的 `ref`，字符串值根本到不了函数组件，而是抛 error #290；shell 记为 `slot entry crashed` 并什么都不渲染。`jsx-runtime` 测试替身现在复现了这条规则，因此测试会先失败。
 
 ## 许可证
 
