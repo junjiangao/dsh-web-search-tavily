@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../client-src/client.ts'
 import { TavilyCredentialStatus } from '../client-src/controls.tsx'
-import { TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from '../client-src/controller.ts'
+import { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY } from '../client-src/controller.ts'
 import { NS } from '../client-src/locales.ts'
 
 /** One registration as the entry made it. */
@@ -110,7 +110,7 @@ function contextOf(options: {
 }
 
 describe('client entry surfaces', () => {
-  it('requires only the services the card reads', () => {
+  it('requires only the services both cards read', () => {
     expect(inject).toEqual(['slots', 'locale', 'configForms'])
   })
 
@@ -121,33 +121,36 @@ describe('client entry surfaces', () => {
     expect(fake.awaited).toEqual([['remote', 'remote.credentials']])
   })
 
-  it('registers the bundle row control and nothing else', () => {
+  it('registers the bundle configuration and the bundle row control', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
     expect(fake.dictionaries).toEqual([NS])
-    // Only the row surface. `plugins.item` cards take their artwork from a map
-    // keyed to the four shipped item ids, so a card registered there would show
-    // the default glyph however the manifest declares its icon — while the row
-    // renders that icon. The row is also the surface dsh documents for a
-    // bundle's own configuration.
-    expect(fake.injected).toEqual(['plugins.row.config'])
-    expect(fake.registrations.map(entry => entry.options.name)).toEqual(['plugins.row.config'])
-    expect(fake.registrations[0]?.options.key).toBe(TAVILY_ROW_CONFIG_KEY)
+    // The bundle surfaces, never `plugins.item`: that slot lists the official
+    // host-plane settings pages beside the official bundles, and a bundle's
+    // card there would show the default glyph whatever its manifest declares
+    // (the slot's artwork map is keyed to the four shipped item ids).
+    expect(fake.injected).toEqual(['plugins.bundle.config', 'plugins.row.config'])
+
+    const bundle = fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')
+    // The page dispatches the package name the profile selects: that is what
+    // puts the form on the bundle's own page, one click from the list.
+    expect(bundle?.options.key).toBe(TAVILY_BUNDLE)
+
+    const row = fake.registrations.find(entry => entry.options.name === 'plugins.row.config')
+    expect(row?.options.key).toBe(TAVILY_ROW_CONFIG_KEY)
   })
 
-  it('renders a summary and a form through the row control', () => {
+  it('renders a summary and a form through both cards', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
-    // The row's detail page renders the summary as its one-liner and the form
-    // as its configuration section, both through this one registration.
-    expect(fake.registrations).toHaveLength(1)
+    expect(fake.registrations).toHaveLength(2)
     for (const registration of fake.registrations) {
       expect(registration.component({ view: 'summary' })).toBeDefined()
       expect(registration.component({ view: 'page' })).toBeDefined()
     }
   })
 
-  it('renders the card without a credentials domain', () => {
+  it('renders both cards without a credentials domain', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
     const page = fake.registrations[0]?.component({ view: 'page' })

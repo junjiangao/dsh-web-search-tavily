@@ -3,10 +3,13 @@
  * namespace — the Loader entry id, which is also the id of the row this
  * bundle's patch inserts.
  *
- * The card registers into the `plugins.row.config` slot keyed by
- * `<bundle package>#<row id>`, which is what gives that row on the bundle's
- * page its configure control; the page then hands the entry's configuration
- * form to the card and the shared model stages every edit until one save.
+ * The card registers into the two surfaces dsh reserves for a bundle's own
+ * configuration: the bundle's page (`plugins.bundle.config`, keyed by the
+ * package name) and the bundle row's configure control (`plugins.row.config`,
+ * keyed `<bundle package>#<row id>`). The page owner hands the row's card a
+ * `form`, but the card needs none of it: it binds the `web-search-tavily` scope
+ * itself, which is also what lets it render on the bundle page, where the owner
+ * passes no form at all. The shared model stages every edit until one save.
  *
  * The section names a credential reference, never the secret: whether a key
  * exists behind that reference is a question for the credentials domain, and

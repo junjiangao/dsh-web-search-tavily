@@ -3,28 +3,34 @@
  * configuration card on the dsh Web Plugins page.
  *
  * The Host half owns the Loader entry, its schema, and the search provider.
- * This half owns exactly one thing: while the Host serves the
- * `web-search-tavily` namespace, it registers the entry's form into the
- * `plugins.row.config` surface of the Plugins page — the configure control on
- * the row this bundle's patch inserts, keyed `<package>#<row id>`, which is
- * where dsh documents a bundle's own configuration.
+ * This half owns one thing: while the Host serves the `web-search-tavily`
+ * namespace, it registers the entry's form into the surfaces dsh reserves for a
+ * bundle's own configuration.
  *
- * It deliberately registers nothing into `plugins.item`. That slot's cards take
- * their artwork from a map keyed to the four shipped item ids (`shell`,
- * `agent-loop`, `subagent`, `web-search`), so a card registered by any other
- * plugin renders the default glyph no matter what its manifest declares; the
- * row and bundle surfaces render the manifest `icon` instead. One entry point
- * that shows this plugin's own icon beats two that show the same form under two
- * different artworks.
+ * `plugins.bundle.config` carries the form on this bundle's own page, keyed by
+ * the package name the profile selects, so the settings sit directly under the
+ * description — one click from the Plugins list. `plugins.row.config` carries
+ * the configure control on the row this bundle's patch inserts, keyed
+ * `<package>#<row id>`, which opens the same form under its own page. Both
+ * render the same form over the same namespace, so a save from either lands in
+ * the same place.
  *
- * A deployment without the provider shows no trace of it, and the card
- * disappears with the entry rather than rendering a form nothing would accept.
+ * It deliberately registers nothing into `plugins.item`: that slot lists the
+ * official host-plane settings pages beside the official bundles, and any card
+ * registered by a bundle shows the default glyph whatever its manifest
+ * declares (the slot's artwork map is keyed to the four shipped item ids
+ * `shell`, `agent-loop`, `subagent`, `web-search`). A bundle's configuration
+ * belongs in `plugins.bundle.config` or `plugins.row.config` — this one, not
+ * that one.
+ *
+ * A deployment without the provider shows no trace of either, and the cards
+ * disappear with the entry rather than rendering a form nothing would accept.
  *
  * @module @junjiangao/dsh-web-search-tavily/client
  */
 
 import { TavilyCard, type TavilyCardProps } from './card.tsx'
-import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from './controller.ts'
+import { TavilyCardController, TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from './controller.ts'
 import type { Context, CredentialsRemote, RemoteService } from './context.ts'
 import { TAVILY_FIELDS } from './fields.ts'
 import { dictionaries, NS } from './locales.ts'
@@ -86,8 +92,14 @@ export function apply(ctx: Context): void {
   const card = (props: TavilyCardProps) => TavilyCard(props, face)
 
   ctx.effect(() => ctx.configForms.whileServed([TAVILY_SETTINGS_NS], () => {
-    // The configure control on the bundle row itself: the only surface this
-    // card registers, and the one that renders the manifest icon.
+    // The bundle's own configuration, on the bundle's page between its
+    // description and its rows. The page dispatches this exact key — the
+    // package name the profile selects — so the form needs no extra click.
+    const bundle = ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
+      { name: 'plugins.bundle.config', key: TAVILY_BUNDLE },
+      card,
+    ))
+    // The configure control on the row this bundle's patch inserts.
     const row = ctx.slots.inject('plugins.row.config', () => ctx.slots.register(
       { name: 'plugins.row.config', key: TAVILY_ROW_CONFIG_KEY },
       card,
@@ -95,7 +107,8 @@ export function apply(ctx: Context): void {
     // The shell's inject returns the registration's disposer; a shell that
     // returns nothing still owns the registration through the context.
     return () => {
+      if (typeof bundle === 'function') bundle()
       if (typeof row === 'function') row()
     }
-  }), 'web-search-tavily: configuration surface')
+  }), 'web-search-tavily: bundle configuration surfaces')
 }
