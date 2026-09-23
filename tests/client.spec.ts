@@ -4,8 +4,10 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { Config } from '../src/index.ts'
 import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from '../client-src/controller.ts'
-import { specOf, TAVILY_FIELDS, type TavilyField } from '../client-src/fields.ts'
+import { specOf, TAVILY_FIELDS, fieldEnabled, fieldsOf, TAVILY_GROUPS, type TavilyField } from '../client-src/fields.ts'
+import { dictionaries } from '../client-src/locales.ts'
 import type { SettingsFormPathOp, SettingsFormScope } from './stubs/ui-primitives.ts'
 
 /** Field table lookup, so a spec case names its field rather than its index. */
@@ -45,7 +47,7 @@ describe('client field specs', () => {
   })
 
   it('renders booleans as true/false and refuses anything else', () => {
-    const spec = specOf(fieldOf('includeImages'))
+    const spec = specOf(fieldOf('filterByLanguage'))
     expect(spec.format(true)).toBe('true')
     expect(spec.format(false)).toBe('false')
     expect(spec.format(undefined)).toBe('')
@@ -61,10 +63,13 @@ describe('client field specs', () => {
     expect(depth.parse('')).toEqual({ kind: 'clear' })
     expect(depth.format('basic')).toBe('basic')
 
-    const answer = specOf(fieldOf('includeAnswer'))
+    // The boolean-union vocabulary stays available to a field table even
+    // though the curated surface no longer renders one.
+    const answer = specOf({ field: 'includeAnswer', kind: 'enum', options: ['true', 'false', 'basic', 'advanced'] })
     expect(answer.parse('true')).toEqual({ kind: 'set', value: true })
     expect(answer.parse('false')).toEqual({ kind: 'set', value: false })
     expect(answer.parse('advanced')).toEqual({ kind: 'set', value: 'advanced' })
+    expect(answer.parse('bogus')).toBeUndefined()
     expect(answer.format(true)).toBe('true')
     expect(answer.format(undefined)).toBe('')
   })
@@ -78,23 +83,92 @@ describe('client field specs', () => {
   })
 
   it('parses numbers and text through the shared specs', () => {
-    const results = specOf(fieldOf('maxResults'))
+    const results = specOf({ field: 'maxResults', kind: 'number' })
     expect(results.format(5)).toBe('5')
     expect(results.format(undefined)).toBe('')
     expect(results.parse('5')).toEqual({ kind: 'set', value: 5 })
     expect(results.parse('five')).toBeUndefined()
     expect(results.parse('')).toEqual({ kind: 'clear' })
 
-    const endpoint = specOf(fieldOf('baseURL'))
+    const endpoint = specOf({ field: 'baseURL', kind: 'text' })
     expect(endpoint.format('https://api.tavily.com')).toBe('https://api.tavily.com')
     expect(endpoint.parse(' https://api.tavily.com ')).toEqual({ kind: 'set', value: 'https://api.tavily.com' })
   })
 
-  it('describes every field the Host schema carries', () => {
+  it('renders a curated subset of the Host schema, and nothing outside it', () => {
     const names = TAVILY_FIELDS.map(field => field.field)
     expect(new Set(names).size).toBe(names.length)
-    expect(names).toContain('apiKeyEnv')
-    expect(names).toContain('chunksPerSource')
+    const hostFields = new Set(Object.keys(Config.dict as Record<string, unknown>))
+    for (const name of names) expect(hostFields, name).toContain(name)
+    // Only parameters a deployment can meaningfully choose, in render order.
+    expect(names).toEqual([
+      'apiKey',
+      'apiKeyEnv',
+      'searchDepth',
+      'includeDomains',
+      'excludeDomains',
+      'language',
+      'filterByLanguage',
+      'includeDomainsMode',
+      'includePublishedDate',
+    ])
+  })
+
+  it('sections every field into the groups the card draws, in order', () => {
+    expect(TAVILY_GROUPS.map(entry => entry.group)).toEqual(['credential', 'search', 'advanced'])
+    // Exactly one section folds, and it is the advanced one.
+    expect(TAVILY_GROUPS.filter(entry => entry.collapsed).map(entry => entry.group)).toEqual(['advanced'])
+    expect(fieldsOf('credential').map(field => field.field)).toEqual(['apiKey', 'apiKeyEnv'])
+    expect(fieldsOf('search').map(field => field.field))
+      .toEqual(['searchDepth', 'includeDomains', 'excludeDomains', 'language', 'filterByLanguage'])
+    expect(fieldsOf('advanced').map(field => field.field))
+      .toEqual(['includeDomainsMode', 'includePublishedDate'])
+    // Every field belongs to exactly one rendered section, in table order.
+    const sectioned = TAVILY_GROUPS.flatMap(entry => fieldsOf(entry.group))
+    expect(sectioned).toEqual([...TAVILY_FIELDS])
+  })
+
+  it('locks a field until the companion it names carries a value', () => {
+    const drafts: Record<string, string> = {}
+    const draftOf = (name: string): string => drafts[name] ?? ''
+    const language = fieldOf('language')
+    const filter = fieldOf('filterByLanguage')
+    const mode = fieldOf('includeDomainsMode')
+
+    // A field with no companion is always editable.
+    expect(fieldEnabled(language, draftOf)).toBe(true)
+    expect(fieldEnabled(filter, draftOf)).toBe(false)
+    expect(fieldEnabled(mode, draftOf)).toBe(false)
+    drafts.language = 'zh'
+    expect(fieldEnabled(filter, draftOf)).toBe(true)
+    expect(fieldEnabled(mode, draftOf)).toBe(false)
+    drafts.includeDomains = 'a.com'
+    expect(fieldEnabled(mode, draftOf)).toBe(true)
+    // Empty text is what the field stages when the section carries no value.
+    drafts.language = ''
+    expect(fieldEnabled(filter, draftOf)).toBe(false)
+  })
+
+  it('carries copy for every rendered field in both dictionaries', () => {
+    for (const [locale, dictionary] of Object.entries(dictionaries)) {
+      for (const { field } of TAVILY_FIELDS) {
+        expect(dictionary[`field.${field}`], `${locale} field.${field}`).toBeDefined()
+        expect(dictionary[`hint.${field}`], `${locale} hint.${field}`).toBeDefined()
+      }
+      for (const { group } of TAVILY_GROUPS) {
+        expect(dictionary[`group.${group}`], `${locale} group.${group}`).toBeDefined()
+      }
+    }
+  })
+
+  it('explains why a locked field is locked, in both dictionaries', () => {
+    const locked = TAVILY_FIELDS.filter(field => field.requires !== undefined)
+    expect(locked.map(field => field.field)).toEqual(['filterByLanguage', 'includeDomainsMode'])
+    for (const [locale, dictionary] of Object.entries(dictionaries)) {
+      for (const { field } of locked) {
+        expect(dictionary[`locked.${field}`], `${locale} locked.${field}`).toBeDefined()
+      }
+    }
   })
 })
 
@@ -112,23 +186,23 @@ describe('TavilyCardController', () => {
   })
 
   it('stages an edit, marks the form dirty, and writes it on save', async () => {
-    const { scope, writes } = scopeOf({ maxResults: 5 })
+    const { scope, writes } = scopeOf({ searchDepth: 'basic' })
     const controller = new TavilyCardController(scope)
     const face = controller.inject()
-    face.actions.edit('maxResults', '10')
+    face.actions.edit('searchDepth', 'advanced')
     expect(face.store.getSnapshot().dirty).toBe(true)
-    expect(face.store.getSnapshot().fields.maxResults?.text).toBe('10')
+    expect(face.store.getSnapshot().fields.searchDepth?.text).toBe('advanced')
     face.actions.save()
     await vi.waitFor(() => { expect(writes.length).toBeGreaterThan(0) })
-    expect(writes[0]).toEqual([{ op: 'set', path: ['maxResults'], value: 10 }])
+    expect(writes[0]).toEqual([{ op: 'set', path: ['searchDepth'], value: 'advanced' }])
     controller.dispose()
   })
 
   it('reports an unaccepted draft as invalid without writing it', async () => {
-    const { scope, writes } = scopeOf({ maxResults: 5 })
+    const { scope, writes } = scopeOf({ searchDepth: 'basic' })
     const controller = new TavilyCardController(scope)
     const face = controller.inject()
-    face.actions.edit('maxResults', 'many')
+    face.actions.edit('searchDepth', 'deep')
     const state = face.store.getSnapshot()
     expect(state.invalid).toBe(true)
     expect(state.dirty).toBe(true)
@@ -139,12 +213,12 @@ describe('TavilyCardController', () => {
   })
 
   it('resets a field back to the composition layer', () => {
-    const { scope } = scopeOf({ maxResults: 5 }, { user: { maxResults: 5 } })
+    const { scope } = scopeOf({ searchDepth: 'basic' }, { user: { searchDepth: 'basic' } })
     const controller = new TavilyCardController(scope)
     const face = controller.inject()
-    face.actions.edit('maxResults', '9')
-    face.actions.resetField('maxResults')
-    expect(face.store.getSnapshot().fields.maxResults?.text).toBe('')
+    face.actions.edit('searchDepth', 'fast')
+    face.actions.resetField('searchDepth')
+    expect(face.store.getSnapshot().fields.searchDepth?.text).toBe('')
     controller.dispose()
   })
 })

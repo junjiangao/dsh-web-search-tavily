@@ -14,6 +14,7 @@ declare module 'react' {
   export type ReactNode = unknown
   export interface ReactElement { readonly type: unknown; readonly props: unknown }
   export function createElement(type: unknown, props?: unknown, ...children: unknown[]): ReactElement
+  export function useState<T>(initial: T): [T, (next: T) => void]
   export function useSyncExternalStore<T>(
     subscribe: (listener: () => void) => () => void,
     getSnapshot: () => T,
@@ -145,6 +146,33 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   export function SettingsForm(props: SettingsFormProps): import('react/jsx-runtime').JSX.Element
   export function SettingsValueField(props: SettingsValueFieldProps): import('react/jsx-runtime').JSX.Element
   export function SettingsSecretField(props: SettingsSecretFieldProps): import('react/jsx-runtime').JSX.Element
+  /** Palette selector of the read-only capsule badge. */
+  export type TagTone =
+    | 'outline' | 'solid' | 'neutral' | 'quiet' | 'success' | 'info' | 'warning' | 'danger'
+  /** Props of the read-only capsule badge. */
+  export interface TagProps {
+    tone?: TagTone
+    className?: string | undefined
+    children?: unknown
+  }
+  export function Tag(props: TagProps): import('react/jsx-runtime').JSX.Element
+  /** Props of the two-state toggle. `label` is required: no control ships unnamed. */
+  export interface SwitchProps {
+    checked: boolean
+    onChange: (next: boolean) => void
+    label: string
+    disabled?: boolean
+    title?: string | undefined
+    className?: string | undefined
+  }
+  export function Switch(props: SwitchProps): import('react/jsx-runtime').JSX.Element
+  /** Props of every stroke icon in the shared set. */
+  export interface IconProps {
+    size?: number
+    className?: string
+  }
+  export function IconChevronDownOutlineRegular(props: IconProps): import('react/jsx-runtime').JSX.Element
+  export function IconChevronRightOutlineRegular(props: IconProps): import('react/jsx-runtime').JSX.Element
   export function settingsTextField(field: string): SettingsFieldSpec
   export function settingsNumberField(field: string): SettingsFieldSpec
   /** The staged form model behind one plugin's settings page. */

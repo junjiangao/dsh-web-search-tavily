@@ -54,10 +54,13 @@ export type TavilySearchDepth = 'ultra-fast' | 'fast' | 'basic' | 'advanced'
 export type TavilyTopic = 'general' | 'news' | 'finance'
 /** Relative recency window values Tavily accepts. */
 export type TavilyTimeRange = 'day' | 'week' | 'month' | 'year'
+/** `include_domains` modes Tavily accepts. */
+export type TavilyDomainMode = 'restrict' | 'prefer'
 
 const TAVILY_SEARCH_DEPTHS: readonly TavilySearchDepth[] = ['ultra-fast', 'fast', 'basic', 'advanced']
 const TAVILY_TOPICS: readonly TavilyTopic[] = ['general', 'news', 'finance']
 const TAVILY_TIME_RANGES: readonly TavilyTimeRange[] = ['day', 'week', 'month', 'year']
+const TAVILY_DOMAIN_MODES: readonly TavilyDomainMode[] = ['restrict', 'prefer']
 
 /**
  * Resolved provider options for one search operation. The plugin's `apply`
@@ -81,38 +84,38 @@ export interface TavilySearchProviderOptions {
   startDate?: string
   /** Absolute end date (YYYY-MM-DD) sent as `end_date`. */
   endDate?: string
-  /** Day window sent as `days`. */
+  /** Day window sent as `days` (SDK-era parameter; still honored). */
   days?: number
+  /** Return `published_date` per result, sent as `include_published_date`. */
+  includePublishedDate?: boolean
+  /** Drop out-of-window and undated results, sent as `filter_by_published_date`. */
+  filterByPublishedDate?: boolean
   /** Default result count when a request carries no `maxResults`. */
   maxResults?: number
   /** Domains that must appear in results, sent as `include_domains`. */
   includeDomains?: string[]
+  /** How `include_domains` applies, sent as `include_domains_mode`; ignored without domains. */
+  includeDomainsMode?: TavilyDomainMode
   /** Domains excluded from results, sent as `exclude_domains`. */
   excludeDomains?: string[]
   /** Ask Tavily for a generated answer, sent as `include_answer`. */
   includeAnswer?: boolean | 'basic' | 'advanced'
   /** Ask Tavily for raw page content, sent as `include_raw_content`. */
   includeRawContent?: boolean | 'markdown' | 'text'
-  /** Ask Tavily for image results, sent as `include_images`. */
-  includeImages?: boolean
-  /** Ask Tavily for AI image descriptions, sent as `include_image_descriptions`. */
-  includeImageDescriptions?: boolean
-  /** Ask Tavily for favicon URLs, sent as `include_favicon`. */
-  includeFavicon?: boolean
-  /** Ask Tavily for credit-usage info, sent as `include_usage`. */
-  includeUsage?: boolean
   /** Let Tavily auto-configure parameters, sent as `auto_parameters`. */
   autoParameters?: boolean
   /** Exact-match mode, sent as `exact_match`. */
   exactMatch?: boolean
   /** Preferred result language, sent as `language`. */
   language?: string
-  /** Filter results to `language`, sent as `filter_by_language`. */
+  /** Filter results to `language`, sent as `filter_by_language`; ignored without a language. */
   filterByLanguage?: boolean
   /** Country boost, sent as `country`. */
   country?: string
-  /** Chunks per source for advanced/fast depths, sent as `chunks_per_source`. */
+  /** Chunks per source for advanced/basic/fast depths, sent as `chunks_per_source`. */
   chunksPerSource?: number
+  /** Drop adult/unsafe results, sent as `safe_search`. */
+  safeSearch?: boolean
 }
 
 /**
@@ -127,13 +130,29 @@ export function mapTavilyResult(result: TavilyResult): WebSearchSource | undefin
   if (result.url.length === 0) return undefined
   const title = nonBlank(result.title)
   const snippet = nonBlank(result.content) ?? nonBlank(result.raw_content)
-  const publishedAt = nonBlank(result.published_date)
+  const publishedAt = isoInstant(result.published_date)
   return {
     url: result.url,
     ...title !== undefined ? { title } : {},
     ...snippet !== undefined ? { snippet } : {},
     ...publishedAt !== undefined ? { publishedAt } : {},
   }
+}
+
+/**
+ * Normalize a provider date to the ISO-8601 instant the seam documents. Tavily
+ * sends RFC-1123 (`Thu, 20 Aug 2026 00:00:00 GMT`), which is not ISO-8601, so a
+ * consumer parsing the field as documented would fail on it. An unparseable
+ * value is dropped rather than passed through in the wrong format.
+ *
+ * @param value - Tavily's `published_date`, when present.
+ * @returns the ISO-8601 instant, or `undefined` when absent or unparseable.
+ */
+function isoInstant(value: string | null | undefined): string | undefined {
+  const raw = nonBlank(value)
+  if (raw === undefined) return undefined
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
 }
 
 /**
@@ -200,6 +219,7 @@ export class TavilySearchProvider implements WebSearchProvider {
       && TAVILY_SEARCH_DEPTHS.includes(options.searchDepth)
       && validOptionalEnum(options.topic, TAVILY_TOPICS)
       && validOptionalEnum(options.timeRange, TAVILY_TIME_RANGES)
+      && validOptionalEnum(options.includeDomainsMode, TAVILY_DOMAIN_MODES)
       && (options.maxResults === undefined || isPositiveInteger(options.maxResults))
       && (options.days === undefined || isPositiveInteger(options.days))
       && (options.chunksPerSource === undefined || isPositiveInteger(options.chunksPerSource))
@@ -297,6 +317,13 @@ function buildSearchRequest(
   options: TavilySearchProviderOptions,
   numResults: number | undefined,
 ): TavilySearchRequest {
+  // Both companion-less pairs are hard 400s (`include_domains_mode` without
+  // `include_domains`, and `filter_by_language` without `language`), so a
+  // preference whose companion is unset is dropped rather than sent as a
+  // request that cannot succeed.
+  const includeDomains = options.includeDomains !== undefined && options.includeDomains.length > 0
+    ? options.includeDomains
+    : undefined
   return {
     query,
     search_depth: options.searchDepth,
@@ -306,20 +333,20 @@ function buildSearchRequest(
     ...options.startDate !== undefined ? { start_date: options.startDate } : {},
     ...options.endDate !== undefined ? { end_date: options.endDate } : {},
     ...options.days !== undefined ? { days: options.days } : {},
-    ...options.includeDomains !== undefined && options.includeDomains.length > 0 ? { include_domains: options.includeDomains } : {},
+    ...options.includePublishedDate === true ? { include_published_date: true } : {},
+    ...options.filterByPublishedDate === true ? { filter_by_published_date: true } : {},
+    ...includeDomains !== undefined ? { include_domains: includeDomains } : {},
+    ...includeDomains !== undefined && options.includeDomainsMode !== undefined ? { include_domains_mode: options.includeDomainsMode } : {},
     ...options.excludeDomains !== undefined && options.excludeDomains.length > 0 ? { exclude_domains: options.excludeDomains } : {},
     ...options.includeAnswer !== undefined && options.includeAnswer !== false ? { include_answer: options.includeAnswer } : {},
     ...options.includeRawContent !== undefined && options.includeRawContent !== false ? { include_raw_content: options.includeRawContent } : {},
-    ...options.includeImages === true ? { include_images: true } : {},
-    ...options.includeImageDescriptions === true ? { include_image_descriptions: true } : {},
-    ...options.includeFavicon === true ? { include_favicon: true } : {},
-    ...options.includeUsage === true ? { include_usage: true } : {},
     ...options.autoParameters === true ? { auto_parameters: true } : {},
     ...options.exactMatch === true ? { exact_match: true } : {},
     ...options.language !== undefined ? { language: options.language } : {},
-    ...options.filterByLanguage === true ? { filter_by_language: true } : {},
+    ...options.filterByLanguage === true && options.language !== undefined ? { filter_by_language: true } : {},
     ...options.country !== undefined ? { country: options.country } : {},
     ...options.chunksPerSource !== undefined ? { chunks_per_source: options.chunksPerSource } : {},
+    ...options.safeSearch === true ? { safe_search: true } : {},
   }
 }
 

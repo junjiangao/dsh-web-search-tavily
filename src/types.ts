@@ -22,36 +22,36 @@ export interface TavilySearchRequest {
   start_date?: string
   /** Absolute end date (YYYY-MM-DD). */
   end_date?: string
-  /** Day window. */
+  /** Day window (SDK-era parameter; the endpoint still honors it). */
   days?: number
+  /** Return `published_date` per result; `topic=news` enables it automatically. */
+  include_published_date?: boolean
+  /** Drop results whose date falls outside the requested window (and undated ones). */
+  filter_by_published_date?: boolean
   /** Domains that must appear in results. */
   include_domains?: string[]
+  /** How `include_domains` applies; requires it to be set. */
+  include_domains_mode?: 'restrict' | 'prefer'
   /** Domains excluded from results. */
   exclude_domains?: string[]
   /** Ask Tavily for a generated answer: true, basic, or advanced. */
   include_answer?: boolean | 'basic' | 'advanced'
   /** Ask Tavily for raw page content: true, markdown, or text. */
   include_raw_content?: boolean | 'markdown' | 'text'
-  /** Ask Tavily for image results. */
-  include_images?: boolean
-  /** Ask Tavily for AI image descriptions. */
-  include_image_descriptions?: boolean
-  /** Ask Tavily for favicon URLs. */
-  include_favicon?: boolean
-  /** Ask Tavily for credit-usage info. */
-  include_usage?: boolean
   /** Let Tavily auto-configure parameters from query intent. */
   auto_parameters?: boolean
   /** Exact-match mode. */
   exact_match?: boolean
   /** Preferred result language. */
   language?: string
-  /** Filter results to `language`. */
+  /** Filter results to `language`; requires `language`. */
   filter_by_language?: boolean
-  /** Country boost. */
+  /** Country boost; honored only with `topic=general`. */
   country?: string
-  /** Chunks per source for advanced/fast depths. */
+  /** Chunks per source for advanced/basic/fast depths. */
   chunks_per_source?: number
+  /** Drop adult/unsafe results; unsupported by the fast and ultra-fast depths. */
+  safe_search?: boolean
 }
 
 /** One entry of Tavily's flat `results[]`. */
@@ -64,7 +64,11 @@ export interface TavilyResult {
   raw_content?: string | null
   /** Semantic relevance score (0-1). */
   score?: number
-  /** Provider-supplied publication date, when known. */
+  /**
+   * Provider-supplied publication date in Tavily's own RFC-1123 form
+   * (`Tue, 11 Mar 2025 17:00:00 GMT`); the provider normalizes it to ISO-8601
+   * before it reaches the seam.
+   */
   published_date?: string | null
 }
 
@@ -73,10 +77,8 @@ export interface TavilySearchResponse {
   /** AI-generated answer, present when `include_answer` was requested. */
   answer?: string | null
   results?: TavilyResult[]
-  /** Image results, present when `include_images` was requested. */
+  /** Image results; always present as `[]` and never requested by this provider. */
   images?: unknown[]
-  /** Credit-usage info, present when `include_usage` was requested. */
-  usage?: unknown
 }
 
 /** Tavily's error response envelope (best-effort; fields vary by failure). */

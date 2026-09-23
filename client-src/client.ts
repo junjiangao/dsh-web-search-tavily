@@ -26,6 +26,7 @@ import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from 
 import type { Context, CredentialsRemote, RemoteService } from './context.ts'
 import { TAVILY_FIELDS } from './fields.ts'
 import { dictionaries, NS } from './locales.ts'
+import { installTavilyStyles } from './styles.ts'
 
 export type { TavilyCardProps } from './card.tsx'
 export type { TavilyCardFace, TavilyCardState, TavilyCredentialState } from './controller.ts'
@@ -33,6 +34,7 @@ export { DEFAULT_API_KEY_REF } from './controller.ts'
 
 export { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_ROW_ID, TAVILY_SETTINGS_NS } from './controller.ts'
 export { TAVILY_FIELDS, type TavilyField, type TavilyFieldKind } from './fields.ts'
+export { installTavilyStyles, TAVILY_CSS, TAVILY_STYLE_ELEMENT_ID } from './styles.ts'
 
 /** Dictionary namespace owned by this plugin. */
 export { NS }
@@ -48,6 +50,10 @@ export const TAVILY_ITEM_ORDER = 45
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: Context): void {
+  // The shell shares its components through the module table but not their
+  // stylesheets, so the card's own rules are installed once here, before any
+  // card renders. A host without a document (the test runner) skips it.
+  installTavilyStyles()
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'web-search-tavily: dictionaries')
 

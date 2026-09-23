@@ -7,8 +7,9 @@
 亮点：
 
 - **Keyless 模式**——config、设置、凭据、环境变量均无 key 时，请求进入 Tavily keyless 模式：不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`。
-- **官方搜索参数全量**——深度、主题、时间范围、日期、天数、结果数、include/exclude 域名、answer、raw content、图片、favicon、用量、自动参数、精确匹配、语言、国家、每源 chunk 数均可配置。
-- **原生配置表单**——插件在插件页注册配置卡片（`plugins.row.config`，键为 `@junjiangao/dsh-web-search-tavily#web-search-tavily`），用 dsh 0.1.7 的共享设置表单承载条目 `Config` schema 的每个字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
+- **只暴露能提升检索质量的参数**——设置页只渲染 9 个字段：凭据（`apiKey`、`apiKeyEnv`）、检索深度、限定/排除域名与限定方式、发布日期、结果语言与严格语言过滤。其余 Tavily 参数（主题、时间窗、结果数、answer、raw content、国家、自动参数、精确匹配、安全搜索等）保持 Tavily 默认值、不进表单，但仍可通过 profile patch 覆盖。
+- **分组且不会配出 400 的表单**——三段（凭据／检索／高级），只有「高级」默认折叠；依赖伴随值的控件（严格语言过滤、域名限定方式）在伴随值为空时锁定并说明原因。
+- **原生配置表单**——插件在插件页注册配置卡片（`plugins.row.config`，键为 `@junjiangao/dsh-web-search-tavily#web-search-tavily`），用 dsh 0.1.7 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
 - **要求 dsh 0.1.7+**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
@@ -52,32 +53,44 @@ dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
 
 ## 配置
 
-除标注 schema 默认值的字段外均可选。该 schema 即 dsh 0.1.7 设置页为该插件条目渲染的表单。
+Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可覆盖任意一项），但**设置页只渲染能实际提升检索质量、且取值需要按部署决定的字段**。其余参数一律使用 Tavily 自身默认值，不出现在表单里。
 
-| 配置键 | 默认值 | 含义 |
+### 设置页渲染的字段
+
+表单按 **凭据 / 检索 / 高级** 三段渲染，其中「高级」默认折叠。缺少伴随值的控件会**锁定**并说明原因（提供方发送前也会丢弃该参数，避免 Tavily 的 400），因此不可能配出必然失败的组合。
+
+| 分组 | 配置键 | 默认值 | 含义 |
+|---|---|---|---|
+| 凭据 | `apiKey` | （无） | Tavily API 密钥字面量。优先用 `apiKeyEnv`/凭据服务，避免密钥进配置文件；存入设置的字面量在设置描述中会被脱敏。 |
+| 凭据 | `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。 |
+| 检索 | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`。精度/延迟/成本的主开关。 |
+| 检索 | `includeDomains` | `[]` | 限定域名列表，发送为 `include_domains`；空列表不发送。 |
+| 检索 | `excludeDomains` | `[]` | 排除域名列表，发送为 `exclude_domains`；空列表不发送。 |
+| 检索 | `language` | （无） | 结果语言，发送为 `language`。 |
+| 检索 | `filterByLanguage` | `false` | 严格按 `language` 过滤，发送为 `filter_by_language`。未填 `language` 时控件锁定，且该值被丢弃（否则 Tavily 返回 400）。 |
+| 高级 | `includeDomainsMode` | （无） | `restrict`（只在这些域名内检索）或 `prefer`（仅加权）；发送为 `include_domains_mode`。未填限定域名时控件锁定，且该值被丢弃（否则 Tavily 返回 400）。 |
+| 高级 | `includePublishedDate` | `true` | 发送为 `include_published_date`，让结果携带发布日期（映射为 `publishedAt`）。Tavily 自身默认 `false`，本插件默认开启以便模型判断时效；设为 `false` 即回到官方默认。 |
+
+### 保持默认、不进表单的参数
+
+| 配置键 | 默认值 | 不渲染的原因 |
 |---|---|---|
-| `apiKey` | （无） | Tavily API 密钥字面量。优先用 `apiKeyEnv`/凭据服务，避免密钥进配置文件；存入设置的字面量在设置描述中会被脱敏。 |
-| `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。 |
-| `baseURL` | `https://api.tavily.com` | 端点基址；追加 `/search`。支持 `TAVILY_BASE_URL` 环境变量回退。 |
-| `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`。 |
-| `topic` | （无） | `general` | `news` | `finance`。 |
-| `timeRange` | （无） | `day` | `week` | `month` | `year`。 |
-| `startDate` / `endDate` | （无） | 绝对日期（`YYYY-MM-DD`），发送为 `start_date` / `end_date`。 |
-| `days` | （无） | 天数窗口，发送为 `days`。正整数。 |
-| `maxResults` | （无） | 请求未带 `maxResults` 时的默认结果数；钳制到 Tavily 上限 20。 |
-| `includeDomains` / `excludeDomains` | `[]` | 域名列表，发送为 `include_domains` / `exclude_domains`；空列表不发送。 |
-| `includeAnswer` | `false` | `true` | `basic` | `advanced`；发送为 `include_answer`（为 `false` 时省略）。映射为结果 `content`。 |
-| `includeRawContent` | `false` | `true` | `markdown` | `text`；发送为 `include_raw_content`（为 `false` 时省略）。作为 snippet 回退。 |
-| `includeImages` | `false` | 发送为 `include_images`；seam 暂不展示图片结果（暂缓）。 |
-| `includeImageDescriptions` | `false` | 发送为 `include_image_descriptions`。 |
-| `includeFavicon` | `false` | 发送为 `include_favicon`；暂不展示（暂缓）。 |
-| `includeUsage` | `false` | 发送为 `include_usage`；暂不展示（暂缓）。 |
-| `autoParameters` | `false` | 发送为 `auto_parameters`。 |
-| `exactMatch` | `false` | 发送为 `exact_match`。 |
-| `language` | （无） | 发送为 `language`。 |
-| `filterByLanguage` | `false` | 发送为 `filter_by_language`。 |
-| `country` | （无） | 发送为 `country`。 |
-| `chunksPerSource` | （无） | 发送为 `chunks_per_source`。正整数。 |
+| `baseURL` | `https://api.tavily.com` | 属基础设施而非检索质量；用 `TAVILY_BASE_URL` 环境变量或 patch 覆盖。 |
+| `topic` | （无 → `general`） | 查询级意图；全局固定会把每次检索锁死到 news/finance。 |
+| `timeRange` / `startDate` / `endDate` / `days` | （无） | 同上，属查询级时效窗。`days` 已不在现行 OpenAPI 中，但实测服务端仍生效。 |
+| `filterByPublishedDate` | `false` | 会连带丢弃没有日期的结果。 |
+| `maxResults` | （无） | `dsh-tool-web` 每次请求都会带 `maxResults`（默认 8），因此该默认值在现行部署下不生效。 |
+| `includeAnswer` | `false` | 自带模型的 harness 会自行综合答案；Tavily 官方也建议自备模型时不要开启。 |
+| `includeRawContent` | `false` | snippet 已优先取 `content`，`raw_content` 仅在 `content` 为空时回退，开与不开差别很小。 |
+| `autoParameters` | `false` | 会自动挑参数（可能静默升到 `advanced`），与本插件的显式 `searchDepth` 冲突。 |
+| `exactMatch` | `false` | 仅在查询里带引号短语时才有意义，属查询级。 |
+| `country` | （无） | 只在 `topic=general` 下生效，且取值是国家枚举，误填即 400。 |
+| `chunksPerSource` | （无 → Tavily 默认 3） | Tavily 的默认值 3 已是上限，暴露它只能把 snippet 调短。 |
+| `safeSearch` | `false` | 内容安全策略而非检索质量；且 `fast`/`ultra-fast` 深度下 Tavily 会返回 400。 |
+
+### 已移除的参数
+
+`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` 已从 schema 与提供方中删除：seam 没有图片、favicon、用量展示面，`mapTavilyResult` 也不会消费它们，因此这些开关此前只是白白改变请求体。它们都是 Tavily 默认关闭的字段，删除后行为与默认值完全一致。
 
 密钥解析顺序：字面量 `apiKey` → `dsh-credentials`（`apiKeyEnv` 引用）→ 环境变量（`apiKeyEnv`，默认 `TAVILY_API_KEY`）→ **keyless**。
 
@@ -109,7 +122,9 @@ host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览�
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
-卡片还会向凭据域查询 `apiKeyEnv` 当前指向的引用，并把结果显示在表单上——“密钥已配置：凭据 TAVILY_API_KEY”，或“密钥未配置，搜索将进入无密钥模式”——这样在发起搜索之前就能知道它是否会带凭据。这次查询是**软依赖**（`ctx.inject`）：`remote.credentials` 是异步挂载的命名空间，在 `apply` 阶段直接读取会与之竞争。只有拿到答案才发布状态——查询被拒绝或失败时不显示这一行，而不是声称“未配置密钥”；完全未挂载该命名空间的部署也照常渲染表单。
+卡片还会向凭据域查询 `apiKeyEnv` 当前指向的引用，并把结果以状态标签 + 引用名的形式显示在凭据段里（「密钥已配置 TAVILY_API_KEY」／「密钥未配置，将使用无密钥模式 TAVILY_API_KEY」）——这样在发起搜索之前就能知道它是否会带凭据。这次查询是**软依赖**（`ctx.inject`）：`remote.credentials` 是异步挂载的命名空间，在 `apply` 阶段直接读取会与之竞争。只有拿到答案才发布状态——查询被拒绝或失败时不显示这一行，而不是声称“未配置密钥”；完全未挂载该命名空间的部署也照常渲染表单。
+
+shell 通过冻结模块表共享**组件**，但不共享它的 CSS module，所以卡片自带一份样式（`<style id="dsh-web-search-tavily-styles">`，由 `installTavilyStyles()` 幂等注入一次），只用 `--dsw-alias-*` token，并复刻 shell 自身设置页的行距、0.5px 分隔线与枚举下拉样式；布尔字段用 shell 的 `Switch`，徽章用 `Tag`。除选择框的 chevron（data-URI SVG 无法解析 CSS 变量）外，样式表内没有硬编码颜色。
 
 插件图标采用 harness 的 web-search 图形：`package.json` 声明 `"icon": "./icon.svg"`，与内置 `web-search` 图形的位置和形状一致。该 SVG 用线性渐变近似内置的 conic-gradient 圆环——内置实现用 `foreignObject` 绘制圆环，而清单图标以 `<img>` 渲染，`foreignObject` 在其中为空。
 
@@ -117,6 +132,7 @@ host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览�
 
 - `answer`（启用 `includeAnswer` 时）→ `content`。
 - 每条结果 → `WebSearchSource`：`url`、`title`、`publishedAt` ← `published_date`、`snippet` 优先 `content`、空时回退 `raw_content`。空字段省略；无 URL 的结果丢弃。
+- `published_date` 归一化为 **ISO-8601**：Tavily 返回的是 RFC-1123（`Thu, 20 Aug 2026 00:00:00 GMT`），而 seam 文档承诺 ISO-8601，直接透传会让按文档解析该字段的消费方失败。无法解析的值被丢弃而不是以错误格式透传。
 - `max_results` 钳制到 20（Tavily 文档上限）；最终 `maxResults` 截断仍由 seam 执行（`truncated`）。
 
 ## 模型体验
@@ -143,7 +159,9 @@ pnpm test:e2e     # 真实 API smoke；无 $TAVILY_API_KEY 时自跳过
 
 - **仅实现 `search`**——未实现 Tavily `extract`/crawl/map/research；keyless 本来也只允许 search/extract。
 - **keyless 受服务端限流**，参数可能被降级；插件不做本地假设。
-- **`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage`** 会透传请求，但 seam 暂无图片/用量/favicon 展示面。
+- **已移除 `includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage`**——seam 无对应展示面，此前只是改变请求体；升级后旧 patch 若仍设置这些键，会被 schema 忽略/拒绝，请一并删除。
+- **必然 400 的组合已在提供方侧兜底**——`include_domains_mode` 无 `include_domains`、`filter_by_language` 无 `language` 时，对应参数被丢弃（实测 Tavily 分别返回 400）。
+- **`safe_search` 与 `fast`/`ultra-fast` 互斥**——该组合由 Tavily 返回 400（`Safe search parameter is not supported for fast or ultra-fast search_depth.`），插件不拦截，错误消息原样呈现。
 - **选择归用户所有**：安装本 bundle 只注册提供方；固定 `searchProvider: tavily` 是 profile 层的决定（见上文）。
 - **中止按 signal 分类**：fetch 中止或已中止的 signal 映射为 `WEB_ABORTED`。
 

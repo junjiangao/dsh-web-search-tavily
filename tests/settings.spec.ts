@@ -88,4 +88,29 @@ describe('web-search-tavily configuration form', () => {
     await expect(ctx.web.search({ query: 'after-unload' })).rejects.toThrow()
     await ctx.fiber.dispose()
   })
+
+  it('asks for publication dates by default, and can be turned off', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, {})
+    const live = await liveConfig(ctx, tavilyPlugin, {})
+    expect(JSON.parse((await searchOnce(ctx)).init.body as string)).toMatchObject({ include_published_date: true })
+
+    await live.update({ includePublishedDate: false })
+    expect(JSON.parse((await searchOnce(ctx)).init.body as string)).not.toHaveProperty('include_published_date')
+    await live.fiber.dispose()
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps parameters the card does not render reachable through the entry config', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, {})
+    const live = await liveConfig(ctx, tavilyPlugin, { safeSearch: true, chunksPerSource: 2, maxResults: 6 })
+    expect(JSON.parse((await searchOnce(ctx)).init.body as string)).toMatchObject({
+      safe_search: true,
+      chunks_per_source: 2,
+      max_results: 6,
+    })
+    await live.fiber.dispose()
+    await ctx.fiber.dispose()
+  })
 })

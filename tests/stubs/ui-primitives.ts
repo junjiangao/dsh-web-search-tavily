@@ -192,3 +192,7 @@ export class SettingsFormModel<T> {
 export function SettingsForm(_props: unknown): unknown { return null }
 export function SettingsValueField(_props: unknown): unknown { return null }
 export function SettingsSecretField(_props: unknown): unknown { return null }
+export function Switch(_props: unknown): unknown { return null }
+export function Tag(_props: unknown): unknown { return null }
+export function IconChevronDownOutlineRegular(_props: unknown): unknown { return null }
+export function IconChevronRightOutlineRegular(_props: unknown): unknown { return null }

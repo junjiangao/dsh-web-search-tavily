@@ -25,6 +25,8 @@ export type TavilySearchDepth = 'ultra-fast' | 'fast' | 'basic' | 'advanced';
 export type TavilyTopic = 'general' | 'news' | 'finance';
 /** Relative recency window values Tavily accepts. */
 export type TavilyTimeRange = 'day' | 'week' | 'month' | 'year';
+/** `include_domains` modes Tavily accepts. */
+export type TavilyDomainMode = 'restrict' | 'prefer';
 /**
  * Resolved provider options for one search operation. The plugin's `apply`
  * supplies the credential resolver and constant defaults via a thunk so the
@@ -47,38 +49,38 @@ export interface TavilySearchProviderOptions {
     startDate?: string;
     /** Absolute end date (YYYY-MM-DD) sent as `end_date`. */
     endDate?: string;
-    /** Day window sent as `days`. */
+    /** Day window sent as `days` (SDK-era parameter; still honored). */
     days?: number;
+    /** Return `published_date` per result, sent as `include_published_date`. */
+    includePublishedDate?: boolean;
+    /** Drop out-of-window and undated results, sent as `filter_by_published_date`. */
+    filterByPublishedDate?: boolean;
     /** Default result count when a request carries no `maxResults`. */
     maxResults?: number;
     /** Domains that must appear in results, sent as `include_domains`. */
     includeDomains?: string[];
+    /** How `include_domains` applies, sent as `include_domains_mode`; ignored without domains. */
+    includeDomainsMode?: TavilyDomainMode;
     /** Domains excluded from results, sent as `exclude_domains`. */
     excludeDomains?: string[];
     /** Ask Tavily for a generated answer, sent as `include_answer`. */
     includeAnswer?: boolean | 'basic' | 'advanced';
     /** Ask Tavily for raw page content, sent as `include_raw_content`. */
     includeRawContent?: boolean | 'markdown' | 'text';
-    /** Ask Tavily for image results, sent as `include_images`. */
-    includeImages?: boolean;
-    /** Ask Tavily for AI image descriptions, sent as `include_image_descriptions`. */
-    includeImageDescriptions?: boolean;
-    /** Ask Tavily for favicon URLs, sent as `include_favicon`. */
-    includeFavicon?: boolean;
-    /** Ask Tavily for credit-usage info, sent as `include_usage`. */
-    includeUsage?: boolean;
     /** Let Tavily auto-configure parameters, sent as `auto_parameters`. */
     autoParameters?: boolean;
     /** Exact-match mode, sent as `exact_match`. */
     exactMatch?: boolean;
     /** Preferred result language, sent as `language`. */
     language?: string;
-    /** Filter results to `language`, sent as `filter_by_language`. */
+    /** Filter results to `language`, sent as `filter_by_language`; ignored without a language. */
     filterByLanguage?: boolean;
     /** Country boost, sent as `country`. */
     country?: string;
-    /** Chunks per source for advanced/fast depths, sent as `chunks_per_source`. */
+    /** Chunks per source for advanced/basic/fast depths, sent as `chunks_per_source`. */
     chunksPerSource?: number;
+    /** Drop adult/unsafe results, sent as `safe_search`. */
+    safeSearch?: boolean;
 }
 /**
  * Map one Tavily result to a normalized source. Blank optional fields are

@@ -7,6 +7,11 @@ export function createElement(type: unknown, props: unknown, ...children: unknow
   return { type, props, children }
 }
 
+/** Inert: the disclosure's staged state never needs to change in a tree test. */
+export function useState<T>(initial: T): [T, (next: T) => void] {
+  return [initial, () => {}]
+}
+
 export function useSyncExternalStore<T>(
   _subscribe: (listener: () => void) => () => void,
   getSnapshot: () => T,

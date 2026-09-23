@@ -7,8 +7,9 @@ A [Tavily](https://tavily.com)-backed `WebSearchProvider` for the DeepSeek Harne
 Highlights:
 
 - **Keyless mode** — with no API key anywhere (config, settings, credentials, environment), requests run in Tavily's keyless mode: no `Authorization`, `x-tavily-access-mode: keyless`, and the `dsh-web-search-tavily-keyless` client source.
-- **Full official search surface** — every Tavily search parameter is configurable: depth, topic, time range, dates, days, result count, include/exclude domains, answer, raw content, images, favicon, usage, auto parameters, exact match, language, country, and chunks per source.
-- **Native configuration form** — the plugin registers a configuration card on the Plugins page (`plugins.row.config`, keyed `@junjiangao/dsh-web-search-tavily#web-search-tavily`) that stages every field of the entry's `Config` schema through dsh 0.1.7's shared settings form; each field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
+- **Only the parameters that improve retrieval** — the settings page renders 9 fields: credentials (`apiKey`, `apiKeyEnv`), search depth, include/exclude domains with the domain mode, publication dates, and result language with strict language filtering. Every other Tavily parameter (topic, time windows, result count, answer, raw content, country, auto parameters, exact match, safe search, …) keeps Tavily's own default, stays out of the form, and remains overridable through a profile patch.
+- **A grouped form that cannot be configured into a 400** — three sections (credentials / retrieval / advanced), only the advanced one folded, and dependency-driven controls (strict language filtering, domain mode) that lock with an explanation while their companion value is empty.
+- **Native configuration form** — the plugin registers a configuration card on the Plugins page (`plugins.row.config`, keyed `@junjiangao/dsh-web-search-tavily#web-search-tavily`) that stages those curated fields through dsh 0.1.7's shared settings form; each field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
 - **Standard bundle** — declares `dsh.bundle`, installable with `dsh plugin add`.
 - **dsh 0.1.7+** — the host half owns the Loader entry, its schema, and the search provider; the client half is one small bundle that registers the entry's configuration card. No `settingsScope` and no `settings.installSection` wiring. The plugin icon is the harness web-search glyph (`icon.svg`).
 
@@ -52,32 +53,44 @@ This bundle deliberately only inserts its own plugin row and never overrides the
 
 ## Config
 
-All fields optional except where the schema default is noted. This schema is the form the dsh 0.1.7 settings page renders for the plugin entry.
+The Host `Config` schema still carries Tavily's full parameter surface (a profile patch can override any of it), but **the settings page renders only the fields whose value a deployment can meaningfully choose and whose change improves retrieval quality**. Every other parameter keeps Tavily's own default and never appears in the form.
 
-| Key | Default | Meaning |
+### Fields the settings page renders
+
+The form draws three sections — **credentials / retrieval / advanced** — and only the advanced one starts folded. A control whose companion value is missing renders **locked** and says why (the provider drops that parameter before sending too, so Tavily's 400 is unreachable from here), which makes a combination that must fail impossible to configure.
+
+| Section | Key | Default | Meaning |
+|---|---|---|---|
+| Credentials | `apiKey` | (none) | Literal Tavily API key. Prefer `apiKeyEnv`/credentials so no secret enters configuration files; a stored literal is redacted from settings descriptions. |
+| Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. |
+| Retrieval | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`. The main precision/latency/cost switch. |
+| Retrieval | `includeDomains` | `[]` | Domain list sent as `include_domains`; an empty list is omitted. |
+| Retrieval | `excludeDomains` | `[]` | Domain list sent as `exclude_domains`; an empty list is omitted. |
+| Retrieval | `language` | (none) | Result language, sent as `language`. |
+| Retrieval | `filterByLanguage` | `false` | Filter strictly to `language`, sent as `filter_by_language`. Locked, and dropped, while no `language` is set — which Tavily answers with a 400. |
+| Advanced | `includeDomainsMode` | (none) | `restrict` (search only those domains) or `prefer` (weight them, still search the web); sent as `include_domains_mode`. Locked, and dropped, while no domains are set — which Tavily answers with a 400. |
+| Advanced | `includePublishedDate` | `true` | Sent as `include_published_date` so each result carries its publication date (mapped to `publishedAt`). Tavily's own default is `false`; this plugin enables it so the model can weigh freshness. Set it to `false` for the official default. |
+
+### Parameters left at their default, out of the form
+
+| Key | Default | Why it is not rendered |
 |---|---|---|
-| `apiKey` | (none) | Literal Tavily API key. Prefer `apiKeyEnv`/credentials so no secret enters configuration files; a stored literal is redacted from settings descriptions. |
-| `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. |
-| `baseURL` | `https://api.tavily.com` | Endpoint base; `/search` is appended. `TAVILY_BASE_URL` environment fallback. |
-| `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`. |
-| `topic` | (none) | `general` | `news` | `finance`. |
-| `timeRange` | (none) | `day` | `week` | `month` | `year`. |
-| `startDate` / `endDate` | (none) | Absolute dates (`YYYY-MM-DD`) sent as `start_date` / `end_date`. |
-| `days` | (none) | Day window sent as `days`. Positive integer. |
-| `maxResults` | (none) | Default result count when a request carries no `maxResults`; clamped to Tavily's 20. |
-| `includeDomains` / `excludeDomains` | `[]` | Domain lists sent as `include_domains` / `exclude_domains`; empty lists are omitted. |
-| `includeAnswer` | `false` | `true` | `basic` | `advanced`; sent as `include_answer` (omitted when `false`). Maps to result `content`. |
-| `includeRawContent` | `false` | `true` | `markdown` | `text`; sent as `include_raw_content` (omitted when `false`). Used as snippet fallback. |
-| `includeImages` | `false` | Sent as `include_images`; image results are not surfaced by the seam (deferred). |
-| `includeImageDescriptions` | `false` | Sent as `include_image_descriptions`. |
-| `includeFavicon` | `false` | Sent as `include_favicon`; not surfaced (deferred). |
-| `includeUsage` | `false` | Sent as `include_usage`; not surfaced (deferred). |
-| `autoParameters` | `false` | Sent as `auto_parameters`. |
-| `exactMatch` | `false` | Sent as `exact_match`. |
-| `language` | (none) | Sent as `language`. |
-| `filterByLanguage` | `false` | Sent as `filter_by_language`. |
-| `country` | (none) | Sent as `country`. |
-| `chunksPerSource` | (none) | Sent as `chunks_per_source`. Positive integer. |
+| `baseURL` | `https://api.tavily.com` | Infrastructure, not retrieval quality; override with `TAVILY_BASE_URL` or a patch. |
+| `topic` | (none → `general`) | Query-level intent; pinning it globally locks every search to news/finance. |
+| `timeRange` / `startDate` / `endDate` / `days` | (none) | Same: query-level recency windows. `days` is gone from the current OpenAPI but the endpoint still honors it. |
+| `filterByPublishedDate` | `false` | Also drops every result with no detectable date. |
+| `maxResults` | (none) | `dsh-tool-web` sends `maxResults` on every request (8 by default), so this default never applies in the shipped deployment. |
+| `includeAnswer` | `false` | A harness with its own model synthesizes its own answer; Tavily recommends against it when you bring your own model. |
+| `includeRawContent` | `false` | The snippet already prefers `content` and only falls back to `raw_content` when it is blank, so the switch changes little. |
+| `autoParameters` | `false` | Auto-selects parameters (possibly `advanced` silently), which fights the explicit `searchDepth`. |
+| `exactMatch` | `false` | Only meaningful when the query carries quoted phrases — query-level. |
+| `country` | (none) | Honored only with `topic=general`, and it takes a country enum, so a typo is a 400. |
+| `chunksPerSource` | (none → Tavily's 3) | Tavily's default of 3 is already the maximum, so exposing it could only shorten the snippet. |
+| `safeSearch` | `false` | A content-safety policy rather than retrieval quality; Tavily also rejects it for the `fast`/`ultra-fast` depths. |
+
+### Removed parameters
+
+`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` are gone from both the schema and the provider: the seam has no surface for images, favicons, or usage, and `mapTavilyResult` never consumed them, so the switches only changed the request body. All four default to off in Tavily, so removing them is behavior-identical to their defaults.
 
 Key resolution order: literal `apiKey` → `dsh-credentials` (`apiKeyEnv` ref) → environment (`apiKeyEnv`, default `TAVILY_API_KEY`) → **keyless**.
 
@@ -109,7 +122,9 @@ The host half owns the Loader entry, its `Config` schema, and the search provide
 
 The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in the form is supported but persists in the settings document — prefer credentials or the environment.
 
-The card also asks the credentials domain about the reference `apiKeyEnv` currently names and states the answer on the form — "key configured: credential TAVILY_API_KEY" or "key not configured, searches run keyless" — so a search that would be unauthenticated says so before it is made. The read is a soft dependency (`ctx.inject`), because `remote.credentials` mounts asynchronously and a read attempted during `apply` would race that mount. Only an answer is ever published: a refused or failed read leaves the status line absent rather than claiming no key is configured, and a deployment that never mounts the namespace still renders the form.
+The card also asks the credentials domain about the reference `apiKeyEnv` currently names and states the answer in the credentials section as a status tag beside the reference — "Key configured TAVILY_API_KEY" or "No key configured, searches run keyless TAVILY_API_KEY" — so a search that would be unauthenticated says so before it is made. The read is a soft dependency (`ctx.inject`), because `remote.credentials` mounts asynchronously and a read attempted during `apply` would race that mount. Only an answer is ever published: a refused or failed read leaves the status line absent rather than claiming no key is configured, and a deployment that never mounts the namespace still renders the form.
+
+The shell shares its **components** through the frozen module table but not its CSS modules, so the card carries its own stylesheet (`<style id="dsh-web-search-tavily-styles">`, installed once and idempotently by `installTavilyStyles()`). It reads `--dsw-alias-*` tokens only and mirrors the shell settings page's rhythm, 0.5px dividers, and enum picker; booleans use the shell's `Switch` and badges its `Tag`. No colour is hard-coded except the select chevron, because a data-URI SVG cannot resolve a CSS variable.
 
 The plugin artwork is the harness web-search glyph: `package.json` declares `"icon": "./icon.svg"`, the same position and shape the built-in `web-search` artwork uses. The SVG approximates the built-in conic-gradient ring with a linear gradient, because the harness paints that ring with a `foreignObject` that stays empty inside the `<img>` a manifest icon renders as.
 
@@ -118,6 +133,7 @@ The plugin artwork is the harness web-search glyph: `package.json` declares `"ic
 - `answer` (when `includeAnswer` is enabled) → `content`.
 - Each result → `WebSearchSource`: `url`, `title`, `publishedAt` ← `published_date`, and `snippet` preferring `content` with `raw_content` as fallback. Blank fields are omitted; URL-less results are dropped.
 - `max_results` is clamped to 20 (Tavily's documented bound); the seam still enforces the final `maxResults` truncation (`truncated`).
+- `published_date` is normalized to **ISO-8601**: Tavily sends RFC-1123 (`Thu, 20 Aug 2026 00:00:00 GMT`) while the seam documents an ISO-8601 string, so passing it through would break any consumer that parses the field as documented. An unparseable value is dropped rather than forwarded in the wrong format.
 
 ## Model Experience
 
@@ -143,7 +159,9 @@ Unlike harness in-repo packages (which extend `tsconfig.base.json` and build `li
 
 - **Only `search` is implemented** — no Tavily `extract`/crawl/map/research; keyless mode only permits search/extract anyway.
 - **Keyless is server-rate-limited** and may downgrade parameters; the plugin makes no local assumptions.
-- **`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage`** pass through to the API but the seam has no surface for images/usage/favicons yet.
+- **`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` were removed** — the seam has no surface for them, so they only changed the request body. An older patch that still sets them should drop those keys.
+- **Combinations Tavily rejects with a 400 are handled in the provider** — `include_domains_mode` without `include_domains`, and `filter_by_language` without `language`, are dropped rather than sent (both verified to return 400).
+- **`safe_search` conflicts with the `fast`/`ultra-fast` depths** — Tavily answers that combination with a 400 (`Safe search parameter is not supported for fast or ultra-fast search_depth.`); the plugin does not intercept it and surfaces the message as-is.
 - **Selection stays user-owned**: installing this bundle registers the provider; pinning `searchProvider: tavily` is a profile-layer decision (see above).
 - **Abort classification is signal-based**: a fetch abort or an already-aborted signal maps to `WEB_ABORTED`.
 

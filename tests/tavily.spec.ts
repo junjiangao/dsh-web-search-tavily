@@ -51,14 +51,26 @@ async function mount(
 }
 
 describe('Tavily result mapping', () => {
-  it('maps a full result entry', () => {
+  it('maps a full result entry and normalizes the date to ISO-8601', () => {
     expect(mapTavilyResult({
       url: 'https://a.test',
       title: 'A',
       content: 'snippet text',
       raw_content: 'raw text',
-      published_date: '2026-01-01',
-    })).toEqual({ url: 'https://a.test', title: 'A', snippet: 'snippet text', publishedAt: '2026-01-01' })
+      published_date: 'Thu, 20 Aug 2026 00:00:00 GMT',
+    })).toEqual({
+      url: 'https://a.test',
+      title: 'A',
+      snippet: 'snippet text',
+      publishedAt: '2026-08-20T00:00:00.000Z',
+    })
+  })
+
+  it('accepts an already-ISO date and drops an unparseable one', () => {
+    expect(mapTavilyResult({ url: 'https://a.test', published_date: '2026-01-01' }))
+      .toEqual({ url: 'https://a.test', publishedAt: '2026-01-01T00:00:00.000Z' })
+    expect(mapTavilyResult({ url: 'https://a.test', published_date: 'last Tuesday' }))
+      .toEqual({ url: 'https://a.test' })
   })
 
   it('falls back to raw_content when content is blank', () => {
@@ -140,6 +152,11 @@ describe('TavilySearchProvider availability', () => {
     expect(makeProvider(makeOptions({ searchDepth: 'bogus' as TavilySearchProviderOptions['searchDepth'] })).available()).toBe(false)
     expect(makeProvider(makeOptions({ topic: 'bogus' as TavilySearchProviderOptions['topic'] })).available()).toBe(false)
     expect(makeProvider(makeOptions({ timeRange: 'bogus' as TavilySearchProviderOptions['timeRange'] })).available()).toBe(false)
+    expect(makeProvider(makeOptions({ includeDomainsMode: 'bogus' as TavilySearchProviderOptions['includeDomainsMode'] })).available()).toBe(false)
+  })
+
+  it('accepts a valid domain mode', () => {
+    expect(makeProvider(makeOptions({ includeDomains: ['a.test'], includeDomainsMode: 'prefer' })).available()).toBe(true)
   })
 
   it('is misconfigured when a numeric option is not a positive integer', () => {
@@ -195,21 +212,21 @@ describe('TavilySearchProvider request mapping', () => {
       startDate: '2026-01-01',
       endDate: '2026-02-01',
       days: 7,
+      includePublishedDate: true,
+      filterByPublishedDate: true,
       maxResults: 10,
       includeDomains: ['a.test'],
+      includeDomainsMode: 'prefer',
       excludeDomains: ['b.test'],
       includeAnswer: 'advanced',
       includeRawContent: 'markdown',
-      includeImages: true,
-      includeImageDescriptions: true,
-      includeFavicon: true,
-      includeUsage: true,
       autoParameters: true,
       exactMatch: true,
       language: 'zh',
       filterByLanguage: true,
       country: 'china',
       chunksPerSource: 3,
+      safeSearch: true,
     }))
     await provider.search({ query: 'hello' })
 
@@ -223,20 +240,49 @@ describe('TavilySearchProvider request mapping', () => {
       start_date: '2026-01-01',
       end_date: '2026-02-01',
       days: 7,
+      include_published_date: true,
+      filter_by_published_date: true,
       include_domains: ['a.test'],
+      include_domains_mode: 'prefer',
       exclude_domains: ['b.test'],
       include_answer: 'advanced',
       include_raw_content: 'markdown',
-      include_images: true,
-      include_image_descriptions: true,
-      include_favicon: true,
-      include_usage: true,
       auto_parameters: true,
       exact_match: true,
       language: 'zh',
       filter_by_language: true,
       country: 'china',
       chunks_per_source: 3,
+      safe_search: true,
+    })
+  })
+
+  it('drops a preference whose companion value is unset, which Tavily rejects with a 400', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await makeProvider(makeOptions({
+      includeDomains: [],
+      includeDomainsMode: 'prefer',
+      filterByLanguage: true,
+    })).search({ query: 'q' })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ query: 'q', search_depth: 'basic' })
+  })
+
+  it('keeps the domain mode when domains are set and drops it when they are not', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await makeProvider(makeOptions({ includeDomains: ['a.test'] })).search({ query: 'q' })
+    await makeProvider(makeOptions({ includeDomains: ['a.test'], includeDomainsMode: 'restrict' })).search({ query: 'q' })
+
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string))
+    expect(bodies[0]).toEqual({ query: 'q', search_depth: 'basic', include_domains: ['a.test'] })
+    expect(bodies[1]).toEqual({
+      query: 'q',
+      search_depth: 'basic',
+      include_domains: ['a.test'],
+      include_domains_mode: 'restrict',
     })
   })
 
@@ -246,7 +292,9 @@ describe('TavilySearchProvider request mapping', () => {
     const provider = makeProvider(makeOptions({
       includeAnswer: false,
       includeRawContent: false,
-      includeImages: false,
+      includePublishedDate: false,
+      filterByPublishedDate: false,
+      safeSearch: false,
       includeDomains: [],
       excludeDomains: [],
     }))
@@ -480,21 +528,21 @@ describe('web-search-tavily plugin registration', () => {
       startDate: '2026-01-01',
       endDate: '2026-01-31',
       days: 3,
+      includePublishedDate: true,
+      filterByPublishedDate: true,
       maxResults: 9,
       includeDomains: ['a.test'],
+      includeDomainsMode: 'restrict',
       excludeDomains: ['b.test'],
       includeAnswer: true,
       includeRawContent: 'text',
-      includeImages: true,
-      includeImageDescriptions: true,
-      includeFavicon: true,
-      includeUsage: true,
       autoParameters: true,
       exactMatch: true,
       language: 'en',
       filterByLanguage: true,
       country: 'us',
       chunksPerSource: 2,
+      safeSearch: true,
     })
     await ctx.web.search({ query: 'q' })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -506,21 +554,21 @@ describe('web-search-tavily plugin registration', () => {
       start_date: '2026-01-01',
       end_date: '2026-01-31',
       days: 3,
+      include_published_date: true,
+      filter_by_published_date: true,
       max_results: 9,
       include_domains: ['a.test'],
+      include_domains_mode: 'restrict',
       exclude_domains: ['b.test'],
       include_answer: true,
       include_raw_content: 'text',
-      include_images: true,
-      include_image_descriptions: true,
-      include_favicon: true,
-      include_usage: true,
       auto_parameters: true,
       exact_match: true,
       language: 'en',
       filter_by_language: true,
       country: 'us',
       chunks_per_source: 2,
+      safe_search: true,
     })
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer cfg-key')
     await fiber.dispose()
