@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Config } from '../src/index.ts'
-import { TavilyCardController, TAVILY_ROW_CONFIG_KEY, TAVILY_SETTINGS_NS } from '../client-src/controller.ts'
+import { TavilyCardController, TAVILY_BUNDLE, TAVILY_ROW_ID, TAVILY_SETTINGS_NS } from '../client-src/controller.ts'
 import { specOf, TAVILY_FIELDS, fieldEnabled, fieldsOf, TAVILY_GROUPS, type TavilyField } from '../client-src/fields.ts'
 import { dictionaries } from '../client-src/locales.ts'
 import type { SettingsFormPathOp, SettingsFormScope } from './stubs/ui-primitives.ts'
@@ -41,9 +41,10 @@ function scopeOf(
 }
 
 describe('client field specs', () => {
-  it('keeps the settings namespace and row key aligned with the bundle patch', () => {
+  it('keeps the settings namespace and the bundle identity aligned with the patch', () => {
     expect(TAVILY_SETTINGS_NS).toBe('web-search-tavily')
-    expect(TAVILY_ROW_CONFIG_KEY).toBe('@junjiangao/dsh-web-search-tavily#web-search-tavily')
+    expect(TAVILY_ROW_ID).toBe('web-search-tavily')
+    expect(TAVILY_BUNDLE).toBe('@junjiangao/dsh-web-search-tavily')
   })
 
   it('renders booleans as true/false and refuses anything else', () => {

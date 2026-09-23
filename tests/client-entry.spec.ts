@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../client-src/client.ts'
 import { TavilyCredentialStatus } from '../client-src/controls.tsx'
-import { TAVILY_BUNDLE, TAVILY_ROW_CONFIG_KEY, TAVILY_ROW_ID } from '../client-src/controller.ts'
+import { TAVILY_BUNDLE, TAVILY_ROW_ID } from '../client-src/controller.ts'
 import { NS } from '../client-src/locales.ts'
 
 /** One registration as the entry made it. */
@@ -131,7 +131,7 @@ function contextOf(options: {
 }
 
 describe('client entry surfaces', () => {
-  it('requires only the services both cards read', () => {
+  it('requires only the services the card reads', () => {
     expect(inject).toEqual(['slots', 'locale', 'configForms'])
   })
 
@@ -142,29 +142,28 @@ describe('client entry surfaces', () => {
     expect(fake.awaited).toEqual([['remote', 'remote.credentials'], ['remote', 'remote.pluginManager']])
   })
 
-  it('registers the bundle configuration and the bundle row control', () => {
+  it('registers the bundle configuration surface and nothing else', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
     expect(fake.dictionaries).toEqual([NS])
-    // The bundle surfaces, never `plugins.item`: that slot lists the official
-    // host-plane settings pages beside the official bundles, and a bundle's
-    // card there would show the default glyph whatever its manifest declares
-    // (the slot's artwork map is keyed to the four shipped item ids).
-    expect(fake.injected).toEqual(['plugins.bundle.config', 'plugins.row.config'])
-
-    const bundle = fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')
+    // The bundle's own page, never `plugins.row.config` (a second entry behind
+    // the row's configure control for the same form) and never `plugins.item`
+    // (that slot lists the official host-plane settings pages beside the
+    // official bundles, and a bundle's card there would show the default glyph
+    // whatever its manifest declares — the artwork map is keyed to the four
+    // shipped item ids).
+    expect(fake.injected).toEqual(['plugins.bundle.config'])
+    expect(fake.registrations).toHaveLength(1)
     // With no manager answering, the package's own name is the key.
-    expect(bundle?.options.key).toBe(TAVILY_BUNDLE)
-
-    const row = fake.registrations.find(entry => entry.options.name === 'plugins.row.config')
-    expect(row?.options.key).toBe(TAVILY_ROW_CONFIG_KEY)
+    expect(fake.registrations[0]?.options.name).toBe('plugins.bundle.config')
+    expect(fake.registrations[0]?.options.key).toBe(TAVILY_BUNDLE)
   })
 
-  it('re-keys both surfaces to the name the profile declares', async () => {
+  it('re-keys the surface to the name the profile declares', async () => {
     // A profile that installed this package before the rename still declares it
     // as `@deepseek-ai/dsh-web-search-tavily`, and the Plugins page dispatches
-    // that declared name — not the package's own — for both configuration
-    // surfaces. A real-name key therefore renders nothing at all.
+    // that declared name — not the package's own. A real-name key therefore
+    // renders nothing at all.
     const declared = '@deepseek-ai/dsh-web-search-tavily'
     const manager = {
       listBundles: async () => ({
@@ -178,35 +177,31 @@ describe('client entry surfaces', () => {
     const fake = contextOf({ manager })
     apply(fake.ctx as never)
     await vi.waitFor(() => {
-      expect(fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')?.options.key)
-        .toBe(declared)
+      expect(fake.registrations[0]?.options.key).toBe(declared)
     })
-    const row = fake.registrations.find(entry => entry.options.name === 'plugins.row.config')
-    expect(row?.options.key).toBe(`${declared}#${TAVILY_ROW_ID}`)
-    // The package-name registrations are gone, not shadowed by a second pair.
-    expect(fake.registrations).toHaveLength(2)
+    // The package-name registration is gone, not shadowed by a second one.
+    expect(fake.registrations).toHaveLength(1)
   })
 
-  it('keeps the package-name keys when the manager refuses to answer', () => {
+  it('keeps the package-name key when the manager refuses to answer', () => {
     const manager = { listBundles: async () => { throw new Error('no management') } }
     const fake = contextOf({ manager })
     apply(fake.ctx as never)
-    expect(fake.registrations.find(entry => entry.options.name === 'plugins.bundle.config')?.options.key)
-      .toBe(TAVILY_BUNDLE)
-    expect(fake.registrations).toHaveLength(2)
+    expect(fake.registrations[0]?.options.key).toBe(TAVILY_BUNDLE)
+    expect(fake.registrations).toHaveLength(1)
   })
 
-  it('renders a summary and a form through both cards', () => {
+  it('renders a summary and a form through the card', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
-    expect(fake.registrations).toHaveLength(2)
+    expect(fake.registrations).toHaveLength(1)
     for (const registration of fake.registrations) {
       expect(registration.component({ view: 'summary' })).toBeDefined()
       expect(registration.component({ view: 'page' })).toBeDefined()
     }
   })
 
-  it('renders both cards without a credentials domain', () => {
+  it('renders the card without a credentials domain', () => {
     const fake = contextOf()
     apply(fake.ctx as never)
     const page = fake.registrations[0]?.component({ view: 'page' })

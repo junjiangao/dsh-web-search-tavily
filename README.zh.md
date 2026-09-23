@@ -9,7 +9,7 @@
 - **Keyless 模式**——config、设置、凭据、环境变量均无 key 时，请求进入 Tavily keyless 模式：不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`。
 - **只暴露能提升检索质量的参数**——设置页只渲染 9 个字段：凭据（`apiKey`、`apiKeyEnv`）、检索深度、限定/排除域名与限定方式、发布日期、结果语言与严格语言过滤。其余 Tavily 参数（主题、时间窗、结果数、answer、raw content、国家、自动参数、精确匹配、安全搜索等）保持 Tavily 默认值、不进表单，但仍可通过 profile patch 覆盖。
 - **分组且不会配出 400 的表单**——三段（凭据／检索／高级），只有「高级」默认折叠；依赖伴随值的控件（严格语言过滤、域名限定方式）在伴随值为空时锁定并说明原因。
-- **原生配置表单**——插件在插件页注册配置卡片（`plugins.row.config`，键为 `@junjiangao/dsh-web-search-tavily#web-search-tavily`），用 dsh 0.1.7 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
+- **原生配置表单**——插件在插件页注册配置卡片（`plugins.bundle.config`，位于 bundle 自己的页面，键为 profile 声明的 bundle 名），用 dsh 0.1.7 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
 - **要求 dsh 0.1.7+**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
@@ -118,7 +118,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 
 ## 设置表单与凭据
 
-host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它把该条目的配置卡片注册进 dsh 为 bundle 自身配置预留的两个位置，二者共用同一个 `web-search-tavily` 命名空间。`plugins.bundle.config` 承载 bundle 自己页面上的表单，因此设置就在该 bundle 的说明文字正下方——从插件页一次点击即可到达。`plugins.row.config` 承载该 bundle 补丁插入的那一行上的配置入口，在行自己的页面里打开同一张表单。两个键都取**profile 声明的 bundle 名**：插件页对这两个位置派发的都是声明名，若 profile 以别名安装本包（例如改名前的旧依赖键），声明名就与包名不同。因此 client 会读取插件管理器的 bundle 列表，找到「行加载 `@junjiangao/dsh-web-search-tavily`」的那一条，用它报告的声明名作为两个键；没有管理器应答时退回包名。两者渲染同一张表单，任一处保存都落到同一位置。**不注册** `plugins.item`：该位置列出的是官方 host 面设置页与官方 bundle，bundle 注册到那里的卡片无论清单里声明什么图标都只显示默认图形，因为该 slot 的图形映射表按四个内置条目 id（`shell`、`agent-loop`、`subagent`、`web-search`）索引。每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
+host 半持有 Loader 条目、其 `Config` schema 与搜索提供方；浏览器半是一个 client bundle（`lib/client.js`），它只把该条目的配置卡片注册进 dsh 为 bundle 自身配置预留的那一个位置：`plugins.bundle.config`，渲染在 bundle 自己页面的说明文字与组件列表之间，因此从插件页一次点击即可到达。它**刻意不认领**别的位置——不注册 `plugins.row.config`（那会在该行的配置入口后再加一个同一张表单的重复入口），也不注册 `plugins.item`（该位置列出的是官方 host 面设置页与官方 bundle，bundle 注册到那里的卡片无论清单里声明什么图标都只显示默认图形，因为该 slot 的图形映射表按四个内置条目 id（`shell`、`agent-loop`、`subagent`、`web-search`）索引）。键取 **profile 声明的 bundle 名**：插件页派发的就是声明名，若 profile 以别名安装本包（例如改名前的旧依赖键），声明名就与包名不同。因此 client 会读取插件管理器的 bundle 列表，找到「行加载 `@junjiangao/dsh-web-search-tavily`」的那一条，用它报告的声明名作为键；没有管理器应答时退回包名。每个字段都是 `volatile()`，提交后即就地更新提供方每次搜索读取的 `Volatile` 引用——无需重注册、无需重启。卡片只在 Host 提供 `web-search-tavily` 命名空间时注册，因此未安装该提供方的部署不会出现任何痕迹。`apiKey` 带 `role('secret')`（在所有设置通道上脱敏），`apiKeyEnv` 带 `role('credential-ref')`，与官方 `web-search-deepseek` 提供方的声明完全一致。
 
 推荐把 key 存入凭据服务（web Models/设置页写入），引用名为 `apiKeyEnv`。表单中存字面量 `apiKey` 虽被支持但会落盘——优先凭据服务或环境变量。
 
@@ -168,7 +168,7 @@ client 半是按**真实**的已发布 client 包做类型检查的——`react`
 - **`safe_search` 与 `fast`/`ultra-fast` 互斥**——该组合由 Tavily 返回 400（`Safe search parameter is not supported for fast or ultra-fast search_depth.`），插件不拦截，错误消息原样呈现。
 - **选择归用户所有**：安装本 bundle 只注册提供方；固定 `searchProvider: tavily` 是 profile 层的决定（见上文）。
 - **中止按 signal 分类**：fetch 中止或已中止的 signal 映射为 `WEB_ABORTED`。
-- **配置界面在 bundle 上，而非 Official 分组里**——`plugins.bundle.config` 把表单渲染在 bundle 自己的页面上，`plugins.row.config` 给该行一个配置入口；两者都不往 Official 分组里加卡片。两个键都取 **profile 声明的 bundle 名**，client 从插件管理器的 bundle 列表解析它，因此「依赖键是改名前旧名」的别名安装也能对上——只用包名做键会什么都不渲染。
+- **只有一个入口：bundle 自己的页面**——`plugins.bundle.config`，键取 **profile 声明的 bundle 名**，client 从插件管理器的 bundle 列表解析它，因此「依赖键是改名前旧名」的别名安装也能对上；只用包名做键会什么都不渲染。刻意不注册 `plugins.row.config`，该行因此没有自己的配置入口；也不注册 `plugins.item`，否则会给 Official 分组加一张默认图形的卡片。
 - **本 bundle 里名为 `ref` 的 prop 是陷阱**：React 独占每个元素上的 `ref`，字符串值根本到不了函数组件，而是抛 error #290；shell 记为 `slot entry crashed` 并什么都不渲染。`jsx-runtime` 测试替身现在复现了这条规则，因此测试会先失败。
 
 ## 许可证

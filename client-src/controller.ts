@@ -3,13 +3,11 @@
  * namespace — the Loader entry id, which is also the id of the row this
  * bundle's patch inserts.
  *
- * The card registers into the two surfaces dsh reserves for a bundle's own
- * configuration: the bundle's page (`plugins.bundle.config`, keyed by the
- * package name) and the bundle row's configure control (`plugins.row.config`,
- * keyed `<bundle package>#<row id>`). The page owner hands the row's card a
- * `form`, but the card needs none of it: it binds the `web-search-tavily` scope
- * itself, which is also what lets it render on the bundle page, where the owner
- * passes no form at all. The shared model stages every edit until one save.
+ * The card registers into one surface: `plugins.bundle.config`, keyed by the
+ * name the profile declares this bundle under, rendered on the bundle's own
+ * page. The page owner passes no form there, and the card needs none: it binds
+ * the `web-search-tavily` scope itself, and the shared model stages every edit
+ * until one save.
  *
  * The section names a credential reference, never the secret: whether a key
  * exists behind that reference is a question for the credentials domain, and
@@ -35,27 +33,15 @@ const API_KEY_ENV_FIELD = 'apiKeyEnv'
 /** Settings namespace of this provider: the Loader entry id. */
 export const TAVILY_SETTINGS_NS = 'web-search-tavily'
 
-/** The bundle's package name, as the profile selects it. */
+/** The bundle's own package name; the profile may declare it under an alias. */
 export const TAVILY_BUNDLE = '@junjiangao/dsh-web-search-tavily'
 
-/** The bundle row this patch inserts. */
+/**
+ * The bundle row this patch inserts. The client does not register it — the
+ * form lives on the bundle's page — but the row identifies the bundle among
+ * the ones the profile declares, whatever name they are installed under.
+ */
 export const TAVILY_ROW_ID = 'web-search-tavily'
-
-/**
- * The `plugins.row.config` key of this plugin's row under one bundle name.
- * @param bundle - the name the profile installs the bundle under.
- * @returns the key the Plugins page dispatches that row's page by.
- */
-export function tavilyRowConfigKey(bundle: string): string {
-  return `${bundle}#${TAVILY_ROW_ID}`
-}
-
-/**
- * The `plugins.row.config` key of this plugin's row under the package's own
- * name. The page dispatches the name the profile declares, which is this one
- * unless the profile installs the package under an alias.
- */
-export const TAVILY_ROW_CONFIG_KEY = tavilyRowConfigKey(TAVILY_BUNDLE)
 
 /** The section shape the form stages over; values are read field by field. */
 export type TavilySettings = Record<string, unknown>
