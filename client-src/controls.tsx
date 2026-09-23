@@ -135,6 +135,11 @@ export function TavilySelectField(props: TavilyControlProps & {
 /**
  * Render the resolved credential's state beside the reference it was resolved
  * from, so the key path is one row instead of a floating status line.
+ *
+ * The reference arrives as `reference`, never as `ref`: React owns `ref` on
+ * every element, so a prop of that name is intercepted before it reaches a
+ * function component — and a string value there is a legacy string ref, which
+ * React rejects with error #290 instead of rendering anything.
  * @param props - the configured flag, the reference, and this plugin's copy.
  * @returns the status row.
  */
@@ -142,7 +147,7 @@ export function TavilyCredentialStatus(props: {
   /** Whether the Host reports a configured credential for the reference. */
   readonly configured: boolean
   /** The reference the answer describes. */
-  readonly ref: string
+  readonly reference: string
   /** Copy for the configured state. */
   readonly configuredLabel: string
   /** Copy for the unconfigured state. */
@@ -153,7 +158,7 @@ export function TavilyCredentialStatus(props: {
       <Tag tone={props.configured ? 'success' : 'quiet'}>
         {props.configured ? props.configuredLabel : props.unsetLabel}
       </Tag>
-      <code className={TAVILY_CLASS.statusRef}>{props.ref}</code>
+      <code className={TAVILY_CLASS.statusRef}>{props.reference}</code>
     </div>
   )
 }

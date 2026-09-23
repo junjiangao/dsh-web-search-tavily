@@ -118,7 +118,7 @@ function groupRows(entry: TavilyGroup, state: TavilyCardState, face: TavilyCardF
           <TavilyRow>
             <TavilyCredentialStatus
               configured={state.credential.configured}
-              ref={state.credential.ref}
+              reference={state.credential.ref}
               configuredLabel={face.t('credentialConfigured')}
               unsetLabel={face.t('credentialUnset')}
             />

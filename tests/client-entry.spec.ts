@@ -211,7 +211,11 @@ describe('client entry surfaces', () => {
     await vi.waitFor(() => {
       const status = elementsOf(fake.registrations[0]?.component({ view: 'page' }))
         .find(element => element.type === TavilyCredentialStatus)
-      expect(status?.props['ref']).toBe('TAVILY_API_KEY')
+      // The reference travels as `reference`: a prop named `ref` is React's own
+      // attribute, and a string value there is a legacy string ref React
+      // rejects with error #290 — which crashed this card in both slots.
+      expect(status?.props['reference']).toBe('TAVILY_API_KEY')
+      expect(status?.props['ref']).toBeUndefined()
       expect(status?.props['configured']).toBe(true)
       expect(status?.props['configuredLabel']).toBe(`${NS}.credentialConfigured`)
     })
