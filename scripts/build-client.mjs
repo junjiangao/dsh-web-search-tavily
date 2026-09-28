@@ -9,7 +9,7 @@
  *   })
  *
  * esbuild compiles the client sources to a CJS body whose `require` calls
- * resolve through the shell's frozen module table (dsh 0.1.7 PLATFORM_MODULES);
+ * resolve through the shell's frozen module table (dsh 0.2.0-rc.1 platform modules);
  * this script wraps that body in the factory shell.
  */
 
@@ -21,7 +21,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PACKAGE_ID = '@junjiangao/dsh-web-search-tavily'
 
 /**
- * Specifiers the shell resolves itself (dsh 0.1.7 `PLATFORM_MODULES`). Only
+ * Specifiers the shell resolves itself (dsh 0.2.0-rc.1 platform modules). Only
  * the keys this bundle imports at runtime are listed, so esbuild leaves them as
  * `require` calls instead of bundling them; the boot graph resolves each one
  * from the shell's static module table.

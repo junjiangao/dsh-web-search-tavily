@@ -10,3 +10,4 @@ coverage/
 .vendor/
 # ad-hoc inspection artifacts
 .investigate/
+.codebase-memory/

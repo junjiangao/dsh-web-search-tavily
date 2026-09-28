@@ -9,9 +9,9 @@
 - **Keyless 模式**——config、设置、凭据、环境变量均无 key 时，请求进入 Tavily keyless 模式：不带 `Authorization`、携带 `x-tavily-access-mode: keyless`、client-source 为 `dsh-web-search-tavily-keyless`。
 - **只暴露能提升检索质量的参数**——设置页只渲染 9 个字段：凭据（`apiKey`、`apiKeyEnv`）、检索深度、限定/排除域名与限定方式、发布日期、结果语言与严格语言过滤。其余 Tavily 参数（主题、时间窗、结果数、answer、raw content、国家、自动参数、精确匹配、安全搜索等）保持 Tavily 默认值、不进表单，但仍可通过 profile patch 覆盖。
 - **分组且不会配出 400 的表单**——三段（凭据／检索／高级），只有「高级」默认折叠；依赖伴随值的控件（严格语言过滤、域名限定方式）在伴随值为空时锁定并说明原因。
-- **原生配置表单**——插件在插件页注册配置卡片（`plugins.bundle.config`，位于 bundle 自己的页面，键为 profile 声明的 bundle 名），用 dsh 0.1.7 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
+- **原生配置表单**——插件在插件页注册配置卡片（`plugins.bundle.config`，位于 bundle 自己的页面，键为 profile 声明的 bundle 名），用 dsh 0.2.0-rc.1 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
-- **要求 dsh 0.1.7+**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
+- **要求 dsh 0.2.0-rc.1**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
 ## 安装
 
@@ -29,7 +29,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.3.0.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.0.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
