@@ -1,7 +1,7 @@
 {
   "name": "@junjiangao/dsh-web-search-tavily",
-  "version": "0.4.0",
-  "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, and the native dsh 0.2.0-rc.1 configuration form",
+  "version": "0.4.1",
+  "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, and the native dsh 0.2 configuration form",
   "keywords": [
     "dsh-plugin",
     "dsh",
@@ -67,10 +67,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-credentials": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-web": "0.2.0-rc.1"
+    "@deepseek-ai/dsh-credentials": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-invariants": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-launch-environment": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-web": "^0.2.0-rc.1"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.4"

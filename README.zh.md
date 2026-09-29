@@ -11,7 +11,7 @@
 - **分组且不会配出 400 的表单**——三段（凭据／检索／高级），只有「高级」默认折叠；依赖伴随值的控件（严格语言过滤、域名限定方式）在伴随值为空时锁定并说明原因。
 - **原生配置表单**——插件在插件页注册配置卡片（`plugins.bundle.config`，位于 bundle 自己的页面，键为 profile 声明的 bundle 名），用 dsh 0.2.0-rc.1 的共享设置表单承载上述精选字段；所有字段 `volatile()`，修改后下一次搜索即生效，无需重启。密钥走 `dsh-credentials`、字面量 `apiKey` 或环境变量。
 - **标准 bundle**——声明 `dsh.bundle`，支持 `dsh plugin add` 安装。
-- **要求 dsh 0.2.0-rc.1**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
+- **要求 dsh 0.2.x（`0.2.0-rc.1` 及以上）**——host 半持有 Loader 条目、其 schema 与搜索提供方；client 半是一个很小的 bundle，只负责注册条目的配置卡片。无 `settingsScope`、无 `settings.installSection` 接线。插件图标采用 harness 的 web-search 图形（`icon.svg`）。
 
 ## 安装
 
@@ -29,7 +29,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.0.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.1.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）

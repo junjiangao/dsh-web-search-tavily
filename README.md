@@ -11,7 +11,7 @@ Highlights:
 - **A grouped form that cannot be configured into a 400** — three sections (credentials / retrieval / advanced), only the advanced one folded, and dependency-driven controls (strict language filtering, domain mode) that lock with an explanation while their companion value is empty.
 - **Native configuration form** — the plugin registers a configuration card on the Plugins page (`plugins.bundle.config`, on the bundle's own page, keyed by the bundle name the profile declares) that stages those curated fields through dsh 0.2.0-rc.1's shared settings form; each field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
 - **Standard bundle** — declares `dsh.bundle`, installable with `dsh plugin add`.
-- **dsh 0.2.0-rc.1** — the host half owns the Loader entry, its schema, and the search provider; the client half is one small bundle that registers the entry's configuration card. No `settingsScope` and no `settings.installSection` wiring. The plugin icon is the harness web-search glyph (`icon.svg`).
+- **dsh 0.2.x (`0.2.0-rc.1` or later)** — the host half owns the Loader entry, its schema, and the search provider; the client half is one small bundle that registers the entry's configuration card. No `settingsScope` and no `settings.installSection` wiring. The plugin icon is the harness web-search glyph (`icon.svg`).
 
 ## Install
 
@@ -29,7 +29,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.0.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.1.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
