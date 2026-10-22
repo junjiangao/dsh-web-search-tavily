@@ -38,6 +38,11 @@ export declare const inject: string[];
  * the UI — see the README table for the per-parameter rationale.
  */
 export interface Config {
+    /** 关闭 Tavily 时恢复的 provider，由配置卡片记录。 */
+    previousSearchProvider: Volatile<string | undefined>;
+    previousFetchProvider: Volatile<string | undefined>;
+    /** 凭据卡片写入后显式使用凭据引用，保留旧配置以便回退。 */
+    useCredential: Volatile<boolean>;
     /** Literal Tavily API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
     apiKey: Volatile<string | undefined>;
     /** Credential reference / environment variable carrying the key; defaults to `TAVILY_API_KEY` (schema default). */
@@ -93,6 +98,9 @@ export interface Config {
     safeSearch: Volatile<boolean | undefined>;
 }
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
+    previousSearchProvider: z<string, string, "volatile">;
+    previousFetchProvider: z<string, string, "volatile">;
+    useCredential: z<boolean, boolean, "volatile-defined">;
     apiKey: z<string, string, "volatile">;
     apiKeyEnv: z<string, string, "volatile-defined">;
     baseURL: z<string, string, "volatile">;
@@ -118,6 +126,9 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     chunksPerSource: z<number, number, "volatile">;
     safeSearch: z<boolean, boolean, "volatile">;
 }>>, Schemastery.ObjectT<NoInfer<{
+    previousSearchProvider: z<string, string, "volatile">;
+    previousFetchProvider: z<string, string, "volatile">;
+    useCredential: z<boolean, boolean, "volatile-defined">;
     apiKey: z<string, string, "volatile">;
     apiKeyEnv: z<string, string, "volatile-defined">;
     baseURL: z<string, string, "volatile">;

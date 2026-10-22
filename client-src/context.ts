@@ -64,6 +64,8 @@ export interface ConfigForm<T> {
 
 /** The client configuration-form service. */
 export interface ConfigForms {
+  /** 宿主的脱敏配置镜像，包含密钥是否存在的标记，不包含密钥内容。 */
+  describe?(): SettingsDescribeFace
   /** The shared form of one Host plugin entry id. */
   get<T>(entryId: string): ConfigForm<T>
   /**
@@ -73,6 +75,11 @@ export interface ConfigForms {
    * @returns the disposer removing the watch.
    */
   whileServed(namespaces: readonly string[], register: (served: ReadonlySet<string>) => () => void): () => void
+}
+
+export interface SettingsDescribeFace {
+  getSnapshot(): { view?: { namespaces: readonly { ns: string; secrets?: readonly { path: readonly string[]; set: boolean }[] }[] } | undefined }
+  subscribe(listener: () => void): () => void
 }
 
 /** What the credentials domain reports about one reference. */
@@ -93,6 +100,8 @@ export interface RemoteResult<T> {
 
 /** The credentials remote, as the card reads it. */
 export interface CredentialsRemote {
+  /** Write a credential without returning its value. */
+  set(ref: string, value: string): Promise<RemoteResult<void>>
   /**
    * Describe references without revealing their values.
    * @param refs - the references to describe.

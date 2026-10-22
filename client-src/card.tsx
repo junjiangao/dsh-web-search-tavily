@@ -15,6 +15,7 @@ import {
   IconChevronDownOutlineRegular,
   IconChevronRightOutlineRegular,
   SettingsForm,
+  SettingsSecretField,
   SettingsValueField,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -52,8 +53,22 @@ function fieldControl(field: TavilyField, state: TavilyCardState, face: TavilyCa
     overridden: draft?.overridden ?? false,
     overriddenLabel: face.t('overridden'),
     resetLabel: face.t('reset'),
-    disabled: !state.writable || !enabled,
+    disabled: !state.configWritable || !enabled || state.saving,
     onReset: () => { face.actions.resetField(field.field) },
+  }
+  if (field.kind === 'password') {
+    return (
+      <SettingsSecretField
+        id={common.id}
+        label={common.label}
+        hint={state.keyWritable ? common.hint : face.t('credentialReadOnly')}
+        disabled={!state.keyWritable || state.saving}
+        text={draft?.text ?? ''}
+        configured={state.credential?.configured ?? false}
+        stateLabel={face.t(state.literalKey ? 'literalCredentialConfigured' : state.credential === undefined ? 'credentialUnknown' : state.credential.configured ? 'credentialConfigured' : 'credentialUnset')}
+        onEdit={text => { face.actions.edit(field.field, text) }}
+      />
+    )
   }
   if (field.kind === 'boolean') {
     return (
@@ -119,7 +134,7 @@ function groupRows(entry: TavilyGroup, state: TavilyCardState, face: TavilyCardF
             <TavilyCredentialStatus
               configured={state.credential.configured}
               reference={state.credential.ref}
-              configuredLabel={face.t('credentialConfigured')}
+              configuredLabel={face.t(state.literalKey ? 'literalCredentialConfigured' : 'credentialConfigured')}
               unsetLabel={face.t('credentialUnset')}
             />
           </TavilyRow>
@@ -148,6 +163,20 @@ export function TavilyCard(props: TavilyCardProps, face: TavilyCardFace) {
   if (props.view === 'summary') return <p>{face.t('summary')}</p>
   return (
     <SettingsForm labels={face.labels} state={state} onSave={face.actions.save} onDiscard={face.actions.discard}>
+      <TavilyRow>
+        <TavilyToggleField
+          id="plugin-config-tavily-enabled"
+          label={face.t('enabled')}
+          hint={face.t(state.selectionWritable ? 'enabledHint' : 'selectionUnavailable')}
+          checked={state.enabled}
+          disabled={!state.selectionWritable || state.saving}
+          overridden={false}
+          overriddenLabel=""
+          resetLabel=""
+          onReset={() => {}}
+          onToggle={face.actions.select}
+        />
+      </TavilyRow>
       {TAVILY_GROUPS.map(entry => (
         <section key={entry.group} className={TAVILY_CLASS.group} data-tavily-group={entry.group}>
           {groupHeader(entry, advancedOpen, () => { setAdvancedOpen(!advancedOpen) }, face)}

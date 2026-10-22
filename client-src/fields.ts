@@ -86,7 +86,7 @@ export function fieldsOf(group: TavilyFieldGroup): readonly TavilyField[] {
  * @returns whether the control accepts input.
  */
 export function fieldEnabled(field: TavilyField, draftOf: (name: string) => string): boolean {
-  return field.requires === undefined || draftOf(field.requires).length > 0
+  return field.requires === undefined || draftOf(field.requires).trim().length > 0
 }
 
 /** A draft the boolean control accepts. */

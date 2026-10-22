@@ -19,12 +19,7 @@ import type {
   WebSearchResult,
   WebSearchSource,
 } from '@deepseek-ai/dsh-web'
-import type {
-  TavilyErrorBody,
-  TavilyResult,
-  TavilySearchRequest,
-  TavilySearchResponse,
-} from './types.ts'
+import type { TavilySearchRequest } from './types.ts'
 
 /** Stable id this provider registers under. */
 export const TAVILY_PROVIDER_ID = 'tavily'
@@ -126,13 +121,15 @@ export interface TavilySearchProviderOptions {
  * @param result - one entry of Tavily's `results[]`.
  * @returns the normalized source, or `undefined` when the entry carries no URL.
  */
-export function mapTavilyResult(result: TavilyResult): WebSearchSource | undefined {
-  if (result.url.length === 0) return undefined
+export function mapTavilyResult(result: unknown): WebSearchSource | undefined {
+  if (!isRecord(result) || typeof result.url !== 'string') return undefined
+  const url = result.url.trim()
+  if (!URL.canParse(url) || !['http:', 'https:'].includes(new URL(url).protocol)) return undefined
   const title = nonBlank(result.title)
   const snippet = nonBlank(result.content) ?? nonBlank(result.raw_content)
   const publishedAt = isoInstant(result.published_date)
   return {
-    url: result.url,
+    url,
     ...title !== undefined ? { title } : {},
     ...snippet !== undefined ? { snippet } : {},
     ...publishedAt !== undefined ? { publishedAt } : {},
@@ -148,7 +145,7 @@ export function mapTavilyResult(result: TavilyResult): WebSearchSource | undefin
  * @param value - Tavily's `published_date`, when present.
  * @returns the ISO-8601 instant, or `undefined` when absent or unparseable.
  */
-function isoInstant(value: string | null | undefined): string | undefined {
+function isoInstant(value: unknown): string | undefined {
   const raw = nonBlank(value)
   if (raw === undefined) return undefined
   const parsed = new Date(raw)
@@ -164,9 +161,12 @@ function isoInstant(value: string | null | undefined): string | undefined {
  * @param response - the parsed `POST /search` response body.
  * @returns the normalized result.
  */
-export function mapTavilyResponse(response: TavilySearchResponse): WebSearchResult {
+export function mapTavilyResponse(response: unknown): WebSearchResult {
+  if (!isRecord(response) || !Array.isArray(response.results) || response.error !== undefined) {
+    throw new TypeError('Expected a Tavily response object with a results array')
+  }
   const answer = nonBlank(response.answer)
-  const sources = (response.results ?? [])
+  const sources = response.results
     .map(mapTavilyResult)
     .filter((source): source is WebSearchSource => source !== undefined)
   return {
@@ -183,19 +183,43 @@ export function mapTavilyResponse(response: TavilySearchResponse): WebSearchResu
  * @param body - the parsed error response body.
  * @returns the error message, or `undefined` when no detail is present.
  */
-export function tavilyErrorDetail(body: TavilyErrorBody): string | undefined {
+export function tavilyErrorDetail(body: unknown): string | undefined {
+  if (!isRecord(body)) return undefined
   if (typeof body.error === 'object' && body.error !== null) {
-    const message = body.error.message
-    if (message !== undefined && message.length > 0) return message
+    const message = nonBlank((body.error as Record<string, unknown>).message)
+    if (message !== undefined) return message
   }
   if (typeof body.error === 'string' && body.error.length > 0) return body.error
   if (typeof body.detail === 'object' && body.detail !== null) {
-    const error = body.detail.error
-    if (error !== undefined && error.length > 0) return error
+    const error = nonBlank((body.detail as Record<string, unknown>).error)
+    if (error !== undefined) return error
   }
   if (typeof body.detail === 'string' && body.detail.length > 0) return body.detail
-  if (body.message !== undefined && body.message.length > 0) return body.message
-  return undefined
+  return nonBlank(body.message)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** 接受带路径前缀的 HTTP(S) 基址；拒绝会改变路由或携带凭据的 URL。 */
+function searchEndpoint(baseURL: string): string | undefined {
+  if (!URL.canParse(baseURL)) return undefined
+  const url = new URL(baseURL)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return undefined
+  url.pathname = `${url.pathname.replace(/\/+$/u, '')}/search`
+  return url.href
+}
+
+function validOptions(options: TavilySearchProviderOptions): boolean {
+  return searchEndpoint(options.baseURL) !== undefined
+    && TAVILY_SEARCH_DEPTHS.includes(options.searchDepth)
+    && validOptionalEnum(options.topic, TAVILY_TOPICS)
+    && validOptionalEnum(options.timeRange, TAVILY_TIME_RANGES)
+    && validOptionalEnum(options.includeDomainsMode, TAVILY_DOMAIN_MODES)
+    && (options.maxResults === undefined || isPositiveInteger(options.maxResults))
+    && (options.days === undefined || isPositiveInteger(options.days))
+    && (options.chunksPerSource === undefined || (isPositiveInteger(options.chunksPerSource) && options.chunksPerSource <= 3))
 }
 
 /** The Tavily-backed search provider; HTTP redirects fail as `WEB_PROVIDER_ERROR`. */
@@ -214,15 +238,7 @@ export class TavilySearchProvider implements WebSearchProvider {
   // mode is legitimate, so an empty key never makes the provider unavailable.
   /* jscpd:ignore-start */
   available(): boolean {
-    const options = this.resolveOptions()
-    return URL.canParse(options.baseURL)
-      && TAVILY_SEARCH_DEPTHS.includes(options.searchDepth)
-      && validOptionalEnum(options.topic, TAVILY_TOPICS)
-      && validOptionalEnum(options.timeRange, TAVILY_TIME_RANGES)
-      && validOptionalEnum(options.includeDomainsMode, TAVILY_DOMAIN_MODES)
-      && (options.maxResults === undefined || isPositiveInteger(options.maxResults))
-      && (options.days === undefined || isPositiveInteger(options.days))
-      && (options.chunksPerSource === undefined || isPositiveInteger(options.chunksPerSource))
+    return validOptions(this.resolveOptions())
   }
   /* jscpd:ignore-end */
 
@@ -231,6 +247,7 @@ export class TavilySearchProvider implements WebSearchProvider {
     // settings write landing inside that await must not send the key resolved
     // from the old section to the endpoint named by the new one.
     const options = this.resolveOptions()
+    if (!validOptions(options)) throw new WebError('Tavily search configuration is invalid; check the HTTP(S) base URL and parameter bounds', 'TAVILY_INVALID_CONFIG')
     const apiKey = await this.apiKey(options, signal)
     throwIfSearchAborted(signal)
     // A per-request bound wins over the configured default; either may be absent.
@@ -238,7 +255,7 @@ export class TavilySearchProvider implements WebSearchProvider {
     const body = buildSearchRequest(request.query, options, numResults)
     let response: Response
     try {
-      response = await fetch(`${options.baseURL}/search`, {
+      response = await fetch(searchEndpoint(options.baseURL)!, {
         method: 'POST',
         redirect: 'error',
         headers: {
@@ -261,9 +278,9 @@ export class TavilySearchProvider implements WebSearchProvider {
       const status = response.status
       let message = `Tavily API error (HTTP ${status})`
       try {
-        const parsed = await response.json() as TavilyErrorBody
+        const parsed: unknown = await response.json()
         const detail = tavilyErrorDetail(parsed)
-        if (detail !== undefined) message = detail
+        if (detail !== undefined) message += `: ${detail}`
       } catch (error: unknown) {
         // An abort fired mid-body must surface as WEB_ABORTED, not be swallowed
         // into a generic HTTP-error message — cancellation is not a provider
@@ -276,7 +293,7 @@ export class TavilySearchProvider implements WebSearchProvider {
     }
 
     try {
-      const payload = await response.json() as TavilySearchResponse
+      const payload: unknown = await response.json()
       return mapTavilyResponse(payload)
     } catch (error: unknown) {
       if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
@@ -293,10 +310,11 @@ export class TavilySearchProvider implements WebSearchProvider {
    */
   private async apiKey(options: TavilySearchProviderOptions, signal?: AbortSignal): Promise<string | undefined> {
     throwIfSearchAborted(signal)
-    if (options.apiKey !== undefined && options.apiKey.length > 0) return options.apiKey
+    if (nonBlank(options.apiKey) !== undefined) return options.apiKey!.trim()
     if (options.resolveApiKey === undefined) return undefined
     try {
-      return await abortable(options.resolveApiKey(), signal)
+      const value = await abortable(options.resolveApiKey(), signal)
+      return nonBlank(value)?.trim()
     } catch (error: unknown) {
       if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
       throw new WebError(
@@ -321,8 +339,11 @@ function buildSearchRequest(
   // `include_domains`, and `filter_by_language` without `language`), so a
   // preference whose companion is unset is dropped rather than sent as a
   // request that cannot succeed.
-  const includeDomains = options.includeDomains !== undefined && options.includeDomains.length > 0
-    ? options.includeDomains
+  const domains = options.includeDomains?.map(value => value.trim()).filter(Boolean)
+  const excluded = options.excludeDomains?.map(value => value.trim()).filter(Boolean)
+  const language = nonBlank(options.language)?.trim()
+  const includeDomains = domains !== undefined && domains.length > 0
+    ? domains
     : undefined
   return {
     query,
@@ -337,13 +358,13 @@ function buildSearchRequest(
     ...options.filterByPublishedDate === true ? { filter_by_published_date: true } : {},
     ...includeDomains !== undefined ? { include_domains: includeDomains } : {},
     ...includeDomains !== undefined && options.includeDomainsMode !== undefined ? { include_domains_mode: options.includeDomainsMode } : {},
-    ...options.excludeDomains !== undefined && options.excludeDomains.length > 0 ? { exclude_domains: options.excludeDomains } : {},
+    ...excluded !== undefined && excluded.length > 0 ? { exclude_domains: excluded } : {},
     ...options.includeAnswer !== undefined && options.includeAnswer !== false ? { include_answer: options.includeAnswer } : {},
     ...options.includeRawContent !== undefined && options.includeRawContent !== false ? { include_raw_content: options.includeRawContent } : {},
     ...options.autoParameters === true ? { auto_parameters: true } : {},
     ...options.exactMatch === true ? { exact_match: true } : {},
-    ...options.language !== undefined ? { language: options.language } : {},
-    ...options.filterByLanguage === true && options.language !== undefined ? { filter_by_language: true } : {},
+    ...language !== undefined ? { language } : {},
+    ...options.filterByLanguage === true && language !== undefined ? { filter_by_language: true } : {},
     ...options.country !== undefined ? { country: options.country } : {},
     ...options.chunksPerSource !== undefined ? { chunks_per_source: options.chunksPerSource } : {},
     ...options.safeSearch === true ? { safe_search: true } : {},
@@ -360,9 +381,9 @@ function validOptionalEnum<T extends string>(value: T | undefined, allowed: read
   return value === undefined || allowed.includes(value)
 }
 
-/** `value` trimmed of blanks, or `undefined` when blank/absent. */
-function nonBlank(value: string | null | undefined): string | undefined {
-  return value !== undefined && value !== null && value.trim().length > 0 ? value : undefined
+/** 保留非空字符串原文；空白或其他类型返回 undefined。 */
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
 }
 
 /**
@@ -372,7 +393,11 @@ function nonBlank(value: string | null | undefined): string | undefined {
  */
 function abortable<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (signal === undefined) return operation
-  if (signal.aborted) return Promise.reject(searchAborted(signal))
+  if (signal.aborted) {
+    // 操作已启动，取消后仍须观察其拒绝，避免泄漏 unhandledRejection。
+    void operation.catch(() => {})
+    return Promise.reject(searchAborted(signal))
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => { reject(searchAborted(signal)) }
     signal.addEventListener('abort', onAbort, { once: true })

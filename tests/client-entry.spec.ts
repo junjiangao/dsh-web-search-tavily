@@ -8,6 +8,7 @@ import { apply, inject } from '../client-src/client.ts'
 import { TavilyCredentialStatus } from '../client-src/controls.tsx'
 import { TAVILY_BUNDLE, TAVILY_ROW_ID } from '../client-src/controller.ts'
 import { NS } from '../client-src/locales.ts'
+import { SettingsSecretField } from './stubs/ui-primitives.ts'
 
 /** One registration as the entry made it. */
 interface Registration {
@@ -63,6 +64,7 @@ function contextOf(options: {
   const injected: string[] = []
   const awaited: string[][] = []
   const dictionaries: string[] = []
+  const disposers: Array<() => void> = []
   const section = {
     status: 'ready' as const,
     value: options.value ?? { apiKeyEnv: 'TAVILY_API_KEY', searchDepth: 'basic' },
@@ -119,18 +121,29 @@ function contextOf(options: {
       awaited.push([...names])
       // A deployment that mounted neither namespace runs the callback, finds
       // nothing, and the card simply has no key status to report.
-      callback({ get: (name: string) => services[name] })
+      callback(ctx)
       return { dispose: () => {} }
     },
     effect: (callback: () => void | (() => void)) => {
       const disposer = callback()
-      return () => { if (typeof disposer === 'function') disposer() }
+      const dispose = () => { if (typeof disposer === 'function') disposer() }
+      disposers.push(dispose)
+      return dispose
     },
   }
-  return { ctx, registrations, injected, awaited, dictionaries }
+  return { ctx, registrations, injected, awaited, dictionaries, dispose: () => { for (const dispose of disposers.reverse()) dispose() } }
 }
 
 describe('client entry surfaces', () => {
+  it('does not remount the card if a manager lookup settles after disposal', async () => {
+    let reply!: (value: unknown) => void
+    const fake = contextOf({ manager: { listBundles: () => new Promise(resolve => { reply = resolve }) } })
+    apply(fake.ctx as never)
+    fake.dispose()
+    reply({ ok: true, value: [{ name: 'old-alias', rows: [{ rowId: TAVILY_ROW_ID, moduleName: TAVILY_BUNDLE }] }] })
+    await Promise.resolve()
+    expect(fake.registrations).toEqual([])
+  })
   it('requires only the services the card reads', () => {
     expect(inject).toEqual(['slots', 'locale', 'configForms'])
   })
@@ -199,6 +212,16 @@ describe('client entry surfaces', () => {
       expect(registration.component({ view: 'summary' })).toBeDefined()
       expect(registration.component({ view: 'page' })).toBeDefined()
     }
+  })
+
+  it('renders keys with the real password control and never echoes a stored literal', () => {
+    const fake = contextOf({ value: { apiKey: 'legacy-example' } })
+    apply(fake.ctx as never)
+    const key = elementsOf(fake.registrations[0]?.component({ view: 'page' }))
+      .find(element => element.props['id'] === 'plugin-config-tavily-apiKey')!
+    expect(key.type).toBe(SettingsSecretField)
+    const input = elementsOf(SettingsSecretField(key.props as never)).find(element => element.type === 'input')!
+    expect(input.props).toMatchObject({ type: 'password', autoComplete: 'new-password', value: '' })
   })
 
   it('renders the card without a credentials domain', () => {

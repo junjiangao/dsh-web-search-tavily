@@ -10,7 +10,6 @@
  * @module @junjiangao/dsh-web-search-tavily/provider
  */
 import type { WebSearchProvider, WebSearchRequest, WebSearchResult, WebSearchSource } from '@deepseek-ai/dsh-web';
-import type { TavilyErrorBody, TavilyResult, TavilySearchResponse } from './types.ts';
 /** Stable id this provider registers under. */
 export declare const TAVILY_PROVIDER_ID = "tavily";
 /** Default Tavily endpoint; `/search` is the operation. */
@@ -90,7 +89,7 @@ export interface TavilySearchProviderOptions {
  * @param result - one entry of Tavily's `results[]`.
  * @returns the normalized source, or `undefined` when the entry carries no URL.
  */
-export declare function mapTavilyResult(result: TavilyResult): WebSearchSource | undefined;
+export declare function mapTavilyResult(result: unknown): WebSearchSource | undefined;
 /**
  * Map a Tavily response envelope to a normalized search result. The generated
  * `answer` becomes `content` when present; URL-less results are dropped. The
@@ -100,7 +99,7 @@ export declare function mapTavilyResult(result: TavilyResult): WebSearchSource |
  * @param response - the parsed `POST /search` response body.
  * @returns the normalized result.
  */
-export declare function mapTavilyResponse(response: TavilySearchResponse): WebSearchResult;
+export declare function mapTavilyResponse(response: unknown): WebSearchResult;
 /**
  * Extract the most specific error detail from a Tavily error body, or
  * `undefined` when the body carries none.
@@ -108,7 +107,7 @@ export declare function mapTavilyResponse(response: TavilySearchResponse): WebSe
  * @param body - the parsed error response body.
  * @returns the error message, or `undefined` when no detail is present.
  */
-export declare function tavilyErrorDetail(body: TavilyErrorBody): string | undefined;
+export declare function tavilyErrorDetail(body: unknown): string | undefined;
 /** The Tavily-backed search provider; HTTP redirects fail as `WEB_PROVIDER_ERROR`. */
 export declare class TavilySearchProvider implements WebSearchProvider {
     private readonly resolveOptions;

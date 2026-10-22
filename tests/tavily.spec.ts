@@ -51,6 +51,21 @@ async function mount(
 }
 
 describe('Tavily result mapping', () => {
+  it.each([null, [], true, {}, { error: { message: 'failed' } }, { results: {} }, { results: [], error: 'failed' }])('rejects malformed success envelopes: %j', async body => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(body)))
+    await expect(makeProvider().search({ query: 'q' })).rejects.toMatchObject({ code: 'WEB_PROVIDER_ERROR' })
+  })
+
+  it('filters broken sources while preserving usable results and ignoring invalid optional fields', () => {
+    expect(mapTavilyResponse({ answer: 12, results: [
+      null, true, {}, { url: 12 }, { url: '  ' }, { url: '/relative' }, { url: 'file:///tmp/x' },
+      { url: ' https://a.test ', title: {}, content: 3, published_date: [] },
+    ] })).toEqual({ sources: [{ url: 'https://a.test' }], truncated: false })
+  })
+
+  it.each([null, true, [], { message: 1 }, { error: { message: [] }, detail: { error: 12 } }])('ignores malformed error details: %j', body => {
+    expect(tavilyErrorDetail(body)).toBeUndefined()
+  })
   it('maps a full result entry and normalizes the date to ISO-8601', () => {
     expect(mapTavilyResult({
       url: 'https://a.test',
@@ -108,8 +123,8 @@ describe('Tavily result mapping', () => {
     })
   })
 
-  it('omits content and tolerates a missing results array', () => {
-    const result = mapTavilyResponse({ answer: '', results: undefined })
+  it('omits content for an empty results array', () => {
+    const result = mapTavilyResponse({ answer: '', results: [] })
     expect(result.sources).toEqual([])
     expect(result.content).toBeUndefined()
   })
@@ -172,6 +187,44 @@ describe('TavilySearchProvider availability', () => {
 })
 
 describe('TavilySearchProvider request mapping', () => {
+  it.each([
+    ['https://api.test', 'https://api.test/search'],
+    ['https://api.test/', 'https://api.test/search'],
+    ['http://proxy.test/prefix///', 'http://proxy.test/prefix/search'],
+  ])('normalizes a supported endpoint %s', async (baseURL, endpoint) => {
+    const fetch = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetch)
+    await makeProvider(makeOptions({ baseURL })).search({ query: 'q' })
+    expect(fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ redirect: 'error' }))
+  })
+
+  it.each([
+    { baseURL: 'file:///tmp/x' }, { baseURL: 'https://user:pass@api.test' },
+    { baseURL: 'https://user@api.test' }, { baseURL: 'https://:pass@api.test' },
+    { baseURL: 'https://api.test/?token=a' }, { baseURL: 'https://api.test/#a' },
+    { baseURL: 'invalid' }, { chunksPerSource: 4 }, { chunksPerSource: 0 },
+  ])('rejects invalid endpoint or bounds without resolving credentials: %j', async options => {
+    const resolveApiKey = vi.fn(async () => 'unused')
+    const provider = makeProvider(makeOptions({ ...options, resolveApiKey }))
+    expect(provider.available()).toBe(false)
+    await expect(provider.search({ query: 'q' })).rejects.toMatchObject({ code: 'TAVILY_INVALID_CONFIG' })
+    expect(resolveApiKey).not.toHaveBeenCalled()
+  })
+
+  it('normalizes optional filters and treats whitespace-only credentials as absent', async () => {
+    const fetch = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetch)
+    await makeProvider(makeOptions({ apiKey: ' ', resolveApiKey: async () => ' ',
+      includeDomains: [' ', ''], excludeDomains: [' '], includeDomainsMode: 'prefer', language: ' ', filterByLanguage: true,
+    })).search({ query: 'q' })
+    expect(JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string))
+      .toEqual({ query: 'q', search_depth: 'basic' })
+    await makeProvider(makeOptions({ apiKey: ' key ', includeDomains: [' a.test ', ' '], excludeDomains: [' b.test '], language: ' zh ' }))
+      .search({ query: 'q' })
+    expect(JSON.parse((fetch.mock.calls[1] as unknown as [string, RequestInit])[1].body as string))
+      .toMatchObject({ include_domains: ['a.test'], exclude_domains: ['b.test'], language: 'zh' })
+    expect((fetch.mock.calls[1] as unknown as [string, RequestInit])[1].headers).toMatchObject({ authorization: 'Bearer key' })
+  })
   it('sends bearer auth and no keyless headers with a key', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
     vi.stubGlobal('fetch', fetchMock)
@@ -377,10 +430,24 @@ describe('TavilySearchProvider request mapping', () => {
 })
 
 describe('TavilySearchProvider error handling', () => {
+  it('observes a rejected key resolution even when the resolver synchronously aborts', async () => {
+    const abort = new AbortController()
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      const provider = makeProvider(makeOptions({ resolveApiKey: () => {
+        abort.abort()
+        return Promise.reject(new Error('resolver failed after abort'))
+      } }))
+      await expect(provider.search({ query: 'q' }, abort.signal)).rejects.toMatchObject({ code: 'WEB_ABORTED' })
+      await new Promise(resolve => setImmediate(resolve))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally { process.off('unhandledRejection', unhandled) }
+  })
   it('maps an HTTP error to WEB_PROVIDER_ERROR with the provider message', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: { error: 'bad key' } }, { status: 401 })))
     await expect(makeProvider(makeOptions({ apiKey: 'k' })).search({ query: 'q' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: 'bad key' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: 'Tavily API error (HTTP 401): bad key' }))
   })
 
   it('keeps a status-line message when the error body is not JSON', async () => {
@@ -407,7 +474,7 @@ describe('TavilySearchProvider error handling', () => {
       { status: 429 },
     )))
     await expect(makeProvider().search({ query: 'q' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: 'rate limited' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: 'Tavily API error (HTTP 429): rate limited' }))
   })
 
   it('maps a network failure to WEB_PROVIDER_ERROR', async () => {
@@ -503,6 +570,9 @@ describe('TavilySearchProvider error handling', () => {
 })
 
 describe('web-search-tavily plugin registration', () => {
+  it('rejects chunksPerSource outside the API bounds at schema validation', () => {
+    expect(() => tavilyPlugin.Config({ chunksPerSource: 4 })).toThrow()
+  })
   it('registers the provider into ctx.web (HMR-safe)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ results: [] })))
     const { ctx, fiber } = await mount({ apiKey: 'tavily-key' })

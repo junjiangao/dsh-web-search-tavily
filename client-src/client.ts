@@ -64,7 +64,9 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, dictionaries), 'web-search-tavily: dictionaries')
 
-  const controller = new TavilyCardController(ctx.configForms.get(TAVILY_SETTINGS_NS))
+  const controller = new TavilyCardController(
+    ctx.configForms.get(TAVILY_SETTINGS_NS), ctx.configForms.get('web'), ctx.configForms.describe?.(),
+  )
   ctx.effect(() => () => { controller.dispose() }, 'web-search-tavily: form subscription')
 
   // A soft dependency, not an injected one: the credentials namespace mounts
@@ -75,7 +77,7 @@ export function apply(ctx: Context): void {
     const remote = scoped.get('remote') as RemoteService | undefined
     const credentials = scoped.get('remote.credentials') as CredentialsRemote | undefined
     if (remote === undefined || credentials === undefined) return
-    controller.attachCredentials(remote, credentials)
+    scoped.effect(() => controller.attachCredentials(remote, credentials), 'web-search-tavily: credentials')
   })
 
   const face = {
@@ -128,8 +130,10 @@ export function apply(ctx: Context): void {
   ctx.inject(['remote', 'remote.pluginManager'], (scoped) => {
     const manager = scoped.get('remote.pluginManager') as PluginManagerRemote | undefined
     if (manager === undefined) return
+    let active = true
+    scoped.effect(() => () => { active = false }, 'web-search-tavily: manager lookup')
     void manager.listBundles().then((answer) => {
-      if (!answer.ok) return
+      if (!active || !answer.ok) return
       const declared = answer.value.find(bundle => bundle.rows?.some(
         row => row.rowId === TAVILY_ROW_ID && row.moduleName === TAVILY_BUNDLE,
       ))

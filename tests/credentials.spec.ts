@@ -34,7 +34,7 @@ describe('web-search-tavily credentials', () => {
     try {
       await ctx.plugin(WebRuntime, { searchProvider: TAVILY_PROVIDER_ID })
       await ctx.plugin(LocalCredentialProvider, { path: join(dir, '.credentials.yaml'), watch: false })
-      await ctx.plugin(tavilyPlugin, {})
+      await ctx.plugin(tavilyPlugin, { apiKey: 'legacy-example', useCredential: true })
 
       const ref = credentialRef('TAVILY_API_KEY')
       await ctx.credentials.set(ref, 'stored-key')

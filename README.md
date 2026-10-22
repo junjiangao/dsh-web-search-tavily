@@ -8,7 +8,7 @@ Highlights:
 
 - **Keyless mode** — with no API key anywhere (config, settings, credentials, environment), requests run in Tavily's keyless mode: no `Authorization`, `x-tavily-access-mode: keyless`, and the `dsh-web-search-tavily-keyless` client source.
 - **Only the parameters that improve retrieval** — the settings page renders 9 fields: credentials (`apiKey`, `apiKeyEnv`), search depth, include/exclude domains with the domain mode, publication dates, and result language with strict language filtering. Every other Tavily parameter (topic, time windows, result count, answer, raw content, country, auto parameters, exact match, safe search, …) keeps Tavily's own default, stays out of the form, and remains overridable through a profile patch.
-- **A grouped form that cannot be configured into a 400** — three sections (credentials / retrieval / advanced), only the advanced one folded, and dependency-driven controls (strict language filtering, domain mode) that lock with an explanation while their companion value is empty.
+- **A grouped form with dependency checks** — three sections (credentials / retrieval / advanced), only the advanced one folded, and dependency-driven controls (strict language filtering, domain mode) that lock with an explanation while their companion value is empty.
 - **Native configuration form** — the plugin registers a configuration card on the Plugins page (`plugins.bundle.config`, on the bundle's own page, keyed by the bundle name the profile declares) that stages those curated fields through dsh 0.2.0-rc.1's shared settings form; each field is `volatile()`, so an edit reaches the next search without a restart. The key resolves through `dsh-credentials`, a literal `apiKey`, or the environment.
 - **Standard bundle** — declares `dsh.bundle`, installable with `dsh plugin add`.
 - **dsh 0.2.x (`0.2.0-rc.1` or later)** — the host half owns the Loader entry, its schema, and the search provider; the client half is one small bundle that registers the entry's configuration card. No `settingsScope` and no `settings.installSection` wiring. The plugin icon is the harness web-search glyph (`icon.svg`).
@@ -29,12 +29,16 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.1.tgz
+dsh plugin --profile <name> add ./dsh-web-search-tavily-0.4.2.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
 
 ## Activate tavily as the search provider
+
+Enable **Use Tavily search** on the Tavily card and save to select `web.searchProvider: tavily` and `web.fetchProvider: http` together. Disable and save to restore the previous pair. Changes from the official settings page are reflected in this card. Both plugins can stay installed; each search uses the selected provider.
+
+The switch requires a writable `web` settings namespace. Older Hosts can use the manual configuration below. Before disabling the plugin row or uninstalling Tavily, turn off this switch and save so `web` does not keep pointing at a removed provider.
 
 Registering the provider is not the same as selecting it. The `web` seam picks a provider by id:
 
@@ -46,7 +50,8 @@ With several search providers installed, pin tavily in the **profile's** `cordis
 ```yaml
 - id: web
   config:
-    searchProvider: tavily   # restate every other key the web row carries
+    searchProvider: tavily
+    fetchProvider: http     # restate every other key the web row carries
 ```
 
 This bundle deliberately only inserts its own plugin row and never overrides the `web` row: a patch row replaces the whole row config instead of deep-merging, and multiple provider bundles must not fight over it.
@@ -57,11 +62,11 @@ The Host `Config` schema still carries Tavily's full parameter surface (a profil
 
 ### Fields the settings page renders
 
-The form draws three sections — **credentials / retrieval / advanced** — and only the advanced one starts folded. A control whose companion value is missing renders **locked** and says why (the provider drops that parameter before sending too, so Tavily's 400 is unreachable from here), which makes a combination that must fail impossible to configure.
+The form draws three sections — **credentials / retrieval / advanced** — and only the advanced one starts folded. A control whose companion value is missing renders **locked** and says why (the provider drops that parameter before sending too, avoiding missing-companion errors). Server-side validation still applies.
 
 | Section | Key | Default | Meaning |
 |---|---|---|---|
-| Credentials | `apiKey` | (none) | Literal Tavily API key. Prefer `apiKeyEnv`/credentials so no secret enters configuration files; a stored literal is redacted from settings descriptions. |
+| Credentials | `apiKey` input | (blank) | Write-only password control, saved through Host credentials under `apiKeyEnv`. Blank keeps the existing key; success clears the input and failure retains the draft. |
 | Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. Must match the credential grammar (`^[A-Za-z_][A-Za-z0-9_]*$`); a name outside it fails the search with `TAVILY_INVALID_CREDENTIAL_REF` instead of silently reading as "no key". |
 | Retrieval | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`. The main precision/latency/cost switch. |
 | Retrieval | `includeDomains` | `[]` | Domain list sent as `include_domains`; an empty list is omitted. |
@@ -75,7 +80,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 
 | Key | Default | Why it is not rendered |
 |---|---|---|
-| `baseURL` | `https://api.tavily.com` | Infrastructure, not retrieval quality; override with `TAVILY_BASE_URL` or a patch. |
+| `baseURL` | `https://api.tavily.com` | Override with `TAVILY_BASE_URL` or a patch. HTTP(S) only; path prefixes and trailing slashes are supported. Usernames, passwords, query strings and fragments are rejected. |
 | `topic` | (none → `general`) | Query-level intent; pinning it globally locks every search to news/finance. |
 | `timeRange` / `startDate` / `endDate` / `days` | (none) | Same: query-level recency windows. `days` is gone from the current OpenAPI but the endpoint still honors it. |
 | `filterByPublishedDate` | `false` | Also drops every result with no detectable date. |
@@ -85,7 +90,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 | `autoParameters` | `false` | Auto-selects parameters (possibly `advanced` silently), which fights the explicit `searchDepth`. |
 | `exactMatch` | `false` | Only meaningful when the query carries quoted phrases — query-level. |
 | `country` | (none) | Honored only with `topic=general`, and it takes a country enum, so a typo is a 400. |
-| `chunksPerSource` | (none → Tavily's 3) | Tavily's default of 3 is already the maximum, so exposing it could only shorten the snippet. |
+| `chunksPerSource` | (none → Tavily's 3) | Integers from 1 to 3, checked by both the schema and the runtime. |
 | `safeSearch` | `false` | A content-safety policy rather than retrieval quality; Tavily also rejects it for the `fast`/`ultra-fast` depths. |
 
 ### Removed parameters
@@ -93,6 +98,8 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 `includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` are gone from both the schema and the provider: the seam has no surface for images, favicons, or usage, and `mapTavilyResult` never consumed them, so the switches only changed the request body. All four default to off in Tavily, so removing them is behavior-identical to their defaults.
 
 Key resolution order: literal `apiKey` → `dsh-credentials` (`apiKeyEnv` ref) → environment (`apiKeyEnv`, default `TAVILY_API_KEY`) → **keyless**.
+
+When replacing a legacy literal key, the card sets `useCredential: true` after storing the new credential, explicitly bypassing the old literal. The old configuration remains available for rollback and is never echoed into the input. The card also stores `previousSearchProvider` / `previousFetchProvider` to restore the previous selection. These three settings are not sent to Tavily.
 
 ```yaml
 # With key (env)
@@ -120,9 +127,9 @@ When every key source is empty, requests carry no `Authorization`, send `x-tavil
 
 The host half owns the Loader entry, its `Config` schema, and the search provider; the browser half is a single client bundle (`lib/client.js`) that registers the entry's configuration card into the one surface dsh reserves for a bundle's own configuration: `plugins.bundle.config`, rendered on the bundle's own page between its description and its rows, so the settings are one click from the Plugins list. It deliberately claims nothing else — not `plugins.row.config`, which would add a second entry behind that row's configure control for the same form, and not `plugins.item`, whose slot lists the official host-plane settings pages beside the official bundles and draws a bundle's card with the default glyph whatever its manifest declares (that slot's artwork map is keyed to the four shipped item ids `shell`, `agent-loop`, `subagent`, `web-search`). The key addresses the **name the profile declares**: the Plugins page dispatches the bundle's declared name, which is the package's own name unless the profile installs it under an alias. The client therefore reads the plugin manager's bundle list, finds the entry whose row loads `@junjiangao/dsh-web-search-tavily`, and keys the surface to the name it reports — falling back to the package's own name when no manager answers. Every field is `volatile()`, so a committed edit updates the `Volatile` refs the provider reads per search — no re-registration and no restart. The card registers only while the Host serves the `web-search-tavily` namespace, so a deployment without the provider shows no trace of it. `apiKey` carries `role('secret')` (redacted on every settings wire) and `apiKeyEnv` carries `role('credential-ref')`, the same declarations the official `web-search-deepseek` provider uses.
 
-The recommended key path is the credentials service (written from the web Models/settings page) under the `apiKeyEnv` reference. A literal `apiKey` stored in the form is supported but persists in the settings document — prefer credentials or the environment.
+Enter a key directly on this card to save through `remote.credentials.set` under `apiKeyEnv`. If the reference and key change together, the reference is saved first. Configuration files still support a literal `apiKey`; the card reads only the Host's redacted presence flag. A read-only credential service disables the key input while ordinary configuration remains editable.
 
-The card also asks the credentials domain about the reference `apiKeyEnv` currently names and states the answer in the credentials section as a status tag beside the reference — "Key configured TAVILY_API_KEY" or "No key configured, searches run keyless TAVILY_API_KEY" — so a search that would be unauthenticated says so before it is made. The read is a soft dependency (`ctx.inject`), because `remote.credentials` mounts asynchronously and a read attempted during `apply` would race that mount. Only an answer is ever published: a refused or failed read leaves the status line absent rather than claiming no key is configured, and a deployment that never mounts the namespace still renders the form.
+The card also asks the credentials domain about the reference `apiKeyEnv` currently names and states the answer in the credentials section as a status tag beside the reference — "Key configured TAVILY_API_KEY" or "No key stored for this reference TAVILY_API_KEY" — so a search that would be unauthenticated says so before it is made. The read is a soft dependency (`ctx.inject`), because `remote.credentials` mounts asynchronously and a read attempted during `apply` would race that mount. Only an answer is ever published: a refused or failed read leaves the status line absent rather than claiming no key is configured, and a deployment that never mounts the namespace still renders the form.
 
 The shell shares its **components** through the frozen module table but not its CSS modules, so the card carries its own stylesheet (`<style id="dsh-web-search-tavily-styles">`, installed once and idempotently by `installTavilyStyles()`). It reads `--dsw-alias-*` tokens only and mirrors the shell settings page's rhythm, 0.5px dividers, and enum picker; booleans use the shell's `Switch` and badges its `Tag`. No colour is hard-coded except the select chevron, because a data-URI SVG cannot resolve a CSS variable.
 
@@ -131,6 +138,8 @@ The plugin artwork is the harness web-search glyph: `package.json` declares `"ic
 The Plugins page reads this plugin's display text from `locale/en.json` — the anchor the Host resolves first — plus one file per language beside it, each carrying `meta.title` and `meta.description`. Both files are read through the package specifier, so `exports` maps `"./locale/*.json"` and `files` carries `locale/*.json`; a locale file that is not exported is metadata the page never sees. Without them the page falls back to the untranslated `package.json` `name` and `description`. The plugin's own card text comes from the client dictionaries instead (`client-src/locales.ts`), so a new string belongs in both places.
 
 ## Mapping
+
+A success envelope must be an object containing a `results` array. Malformed envelopes and error payloads fail as `WEB_PROVIDER_ERROR`; individual sources with invalid HTTP(S) URLs are skipped. HTTP errors retain their status alongside the provider message. Invalid endpoints and option bounds fail as `TAVILY_INVALID_CONFIG`.
 
 - `answer` (when `includeAnswer` is enabled) → `content`.
 - Each result → `WebSearchSource`: `url`, `title`, `publishedAt` ← `published_date`, and `snippet` preferring `content` with `raw_content` as fallback. Blank fields are omitted; URL-less results are dropped.
@@ -157,7 +166,7 @@ pnpm test:e2e     # real-API smoke; self-skips without $TAVILY_API_KEY
 
 Unlike harness in-repo packages (which extend `tsconfig.base.json` and build `lib/types` + bundled `lib/index.js`), this standalone package builds with a single `tsc` pass into `lib/`. The published API is unchanged. To vendor it into `deepseek-harness/packages/web/web-search-tavily`, switch the peer/dev dependencies to `workspace:^` and adjust the tsconfig to the harness layout.
 
-The client half is typechecked against the **real** published client packages — `react`, `@types/react`, `@deepseek-ai/dsh-client-store`, and `@deepseek-ai/dsh-client-ui-primitives` are dev-only dependencies pinned to the version the shell ships. Nothing about them reaches the bundle (`lib/client.js` keeps them external and the shell resolves them from its frozen module table), but `pnpm typecheck` now fails when a prop name, an optionality, or an export drifts instead of a hand-written declaration quietly accepting it. The unit tests still run against local stubs (`tests/stubs/`, aliased in `vitest.config.ts`) because they need an inspectable element tree, not a browser.
+The client half is typechecked against the **real** published client packages — `react`, `@types/react`, `@deepseek-ai/dsh-client-store`, and `@deepseek-ai/dsh-client-ui-primitives` are dev-only dependencies pinned to the version the shell ships. Nothing about them reaches the bundle (`lib/client.js` keeps them external and the shell resolves them from its frozen module table), but `pnpm typecheck` now fails when a prop name, an optionality, or an export drifts instead of a hand-written declaration quietly accepting it. Unit tests extract and run the real SettingsFormModel and password/text controls from the pinned published package. Only snapshot storage, React element recording and unrelated UI use stubs. Regressions cover credential writes, permissions, legacy literals, paired provider switching/restoration, revision conflicts and asynchronous lifetimes. This does not replace browser integration or live Tavily API testing.
 
 ## Known Limitations and Deferred Work
 
@@ -166,7 +175,7 @@ The client half is typechecked against the **real** published client packages �
 - **`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` were removed** — the seam has no surface for them, so they only changed the request body. An older patch that still sets them should drop those keys.
 - **Combinations Tavily rejects with a 400 are handled in the provider** — `include_domains_mode` without `include_domains`, and `filter_by_language` without `language`, are dropped rather than sent (both verified to return 400).
 - **`safe_search` conflicts with the `fast`/`ultra-fast` depths** — Tavily answers that combination with a 400 (`Safe search parameter is not supported for fast or ultra-fast search_depth.`); the plugin does not intercept it and surfaces the message as-is.
-- **Selection stays user-owned**: installing this bundle registers the provider; pinning `searchProvider: tavily` is a profile-layer decision (see above).
+- **Selection stays user-owned**: installation registers the provider; the card's switch selects search and fetch together when saved (see above).
 - **Abort classification is signal-based**: a fetch abort or an already-aborted signal maps to `WEB_ABORTED`.
 - **One entry point: the bundle's own page** — `plugins.bundle.config`, keyed by the *declared* bundle name, which the client resolves from the plugin manager's bundle list so an aliased install (a profile dependency key left over from a package rename) still matches; a package-name key alone would render nothing. `plugins.row.config` is deliberately not claimed, so that row carries no configure control of its own, and `plugins.item` would add a default-artwork card to the Official group.
 - **A prop named `ref` is a trap in this bundle**: React owns `ref` on every element, so a string value there never reaches a function component and throws error #290 instead, which the shell reports as `slot entry crashed` and renders nothing. The `jsx-runtime` test stub now reproduces that rule, so the suite fails first.

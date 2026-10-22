@@ -1,6 +1,6 @@
 /**
  * The client half's field table and card controller, exercised against the
- * stub that mirrors the shell's shared form contract.
+ * shell's published shared form implementation.
  */
 
 import { describe, expect, it, vi } from 'vitest'
@@ -318,14 +318,14 @@ describe('TavilyCardController credential status', () => {
     controller.dispose()
   })
 
-  it('attaches only once', async () => {
+  it('replaces the credential remote when its namespace remounts', async () => {
     const { scope } = scopeOf({})
     const first = remoteOf({ TAVILY_API_KEY: { configured: true, writable: true } })
     const second = remoteOf({ TAVILY_API_KEY: { configured: false, writable: true } })
     const controller = attached(scope, first)
     controller.attachCredentials(second.remote as never, second.credentials as never)
-    await vi.waitFor(() => { expect(controller.inject().store.getSnapshot().credential?.configured).toBe(true) })
-    expect(second.described).toEqual([])
+    await vi.waitFor(() => { expect(controller.inject().store.getSnapshot().credential?.configured).toBe(false) })
+    expect(second.described).toEqual([['TAVILY_API_KEY']])
     controller.dispose()
   })
 })

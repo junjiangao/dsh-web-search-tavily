@@ -17,7 +17,7 @@ export default defineConfig({
       'react/jsx-runtime': fileURLToPath(new URL('./tests/stubs/jsx-runtime.ts', import.meta.url)),
       'react/jsx-dev-runtime': fileURLToPath(new URL('./tests/stubs/jsx-runtime.ts', import.meta.url)),
       react: fileURLToPath(new URL('./tests/stubs/react.ts', import.meta.url)),
-      // The native settings form, its fields, and the shared form model.
+      // Real published form model and fields; unrelated UI dependencies are stubbed.
       '@deepseek-ai/dsh-client-ui-primitives': fileURLToPath(
         new URL('./tests/stubs/ui-primitives.ts', import.meta.url),
       ),

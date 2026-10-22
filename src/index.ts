@@ -74,6 +74,11 @@ const BASE_URL_ENV = 'TAVILY_BASE_URL'
  * the UI — see the README table for the per-parameter rationale.
  */
 export interface Config {
+  /** 关闭 Tavily 时恢复的 provider，由配置卡片记录。 */
+  previousSearchProvider: Volatile<string | undefined>
+  previousFetchProvider: Volatile<string | undefined>
+  /** 凭据卡片写入后显式使用凭据引用，保留旧配置以便回退。 */
+  useCredential: Volatile<boolean>
   /** Literal Tavily API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
   apiKey: Volatile<string | undefined>
   /** Credential reference / environment variable carrying the key; defaults to `TAVILY_API_KEY` (schema default). */
@@ -130,6 +135,9 @@ export interface Config {
 }
 
 export const Config = z.object({
+  previousSearchProvider: z.string().volatile(),
+  previousFetchProvider: z.string().volatile(),
+  useCredential: z.boolean().default(false).volatile(),
   apiKey: z.string().role('secret').volatile(),
   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV).volatile(),
   // Declared here rather than only at the use site: a configuration surface
@@ -163,7 +171,7 @@ export const Config = z.object({
   language: z.string().volatile(),
   filterByLanguage: z.boolean().volatile(),
   country: z.string().volatile(),
-  chunksPerSource: z.number().step(1).min(1).volatile(),
+  chunksPerSource: z.number().step(1).min(1).max(3).volatile(),
   safeSearch: z.boolean().volatile(),
 })
 
@@ -245,7 +253,10 @@ export function apply(ctx: Context, config: Config): void {
   // settings document commits, so each search projects the current values and
   // the provider is registered exactly once.
   ctx.web.registerSearchProvider(new TavilySearchProvider(() => resolveOptions(ctx, {
-    apiKey: config.apiKey.get(),
+    previousSearchProvider: config.previousSearchProvider.get(),
+    previousFetchProvider: config.previousFetchProvider.get(),
+    useCredential: config.useCredential.get(),
+    apiKey: config.useCredential.get() ? undefined : config.apiKey.get(),
     apiKeyEnv: config.apiKeyEnv.get(),
     baseURL: config.baseURL.get(),
     searchDepth: config.searchDepth.get(),
