@@ -29,7 +29,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.4.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.5.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
@@ -80,7 +80,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 
 | 配置键 | 默认值 | 不渲染的原因 |
 |---|---|---|
-| `baseURL` | `https://api.tavily.com` | 用 `TAVILY_BASE_URL` 或 patch 覆盖。仅接受 HTTP(S)，支持路径前缀及末尾斜杠，不接受 URL 用户名、密码、查询串或片段。 |
+| `baseURL` | `https://api.tavily.com` | 通过 profile patch 显式覆盖官方端点，不读取环境变量。仅接受 HTTP(S)，支持路径前缀及末尾斜杠，不接受 URL 用户名、密码、查询串或片段。 |
 | `topic` | （无 → `general`） | 查询级意图；全局固定会把每次检索锁死到 news/finance。 |
 | `timeRange` / `startDate` / `endDate` / `days` | （无） | 同上，属查询级时效窗。`days` 已不在现行 OpenAPI 中，但实测服务端仍生效。 |
 | `filterByPublishedDate` | `false` | 会连带丢弃没有日期的结果。 |

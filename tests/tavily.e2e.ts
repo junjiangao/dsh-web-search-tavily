@@ -14,7 +14,7 @@ maybe('TavilySearchProvider real API', () => {
   it('returns sources for a live query with a key', async () => {
     const provider = new TavilySearchProvider(() => ({
       apiKey: apiKey!,
-      baseURL: process.env.TAVILY_BASE_URL ?? TAVILY_DEFAULT_BASE_URL,
+      baseURL: TAVILY_DEFAULT_BASE_URL,
       searchDepth: TAVILY_DEFAULT_SEARCH_DEPTH,
     }))
     const result = await provider.search({ query: 'DeepSeek Harness', maxResults: 5 })

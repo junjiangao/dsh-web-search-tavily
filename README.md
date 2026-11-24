@@ -29,7 +29,7 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.4.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.5.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
@@ -80,7 +80,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 
 | Key | Default | Why it is not rendered |
 |---|---|---|
-| `baseURL` | `https://api.tavily.com` | Override with `TAVILY_BASE_URL` or a patch. HTTP(S) only; path prefixes and trailing slashes are supported. Usernames, passwords, query strings and fragments are rejected. |
+| `baseURL` | `https://api.tavily.com` | Explicit profile-patch override for the official endpoint; there is no environment fallback. HTTP(S) only; path prefixes and trailing slashes are supported. Usernames, passwords, query strings and fragments are rejected. |
 | `topic` | (none → `general`) | Query-level intent; pinning it globally locks every search to news/finance. |
 | `timeRange` / `startDate` / `endDate` / `days` | (none) | Same: query-level recency windows. `days` is gone from the current OpenAPI but the endpoint still honors it. |
 | `filterByPublishedDate` | `false` | Also drops every result with no detectable date. |

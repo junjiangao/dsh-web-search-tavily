@@ -12,6 +12,8 @@ import {
 } from '../src/provider.ts'
 import type { TavilySearchProviderOptions } from '../src/provider.ts'
 
+// TAVILY_BASE_URL is no longer a product input; it stays here so the test that
+// proves it is ignored restores it cleanly.
 const ENV_KEYS = ['TAVILY_API_KEY', 'TAVILY_BASE_URL', 'MY_TAVILY_KEY'] as const
 const savedEnv = new Map<string, string | undefined>()
 
@@ -695,14 +697,25 @@ describe('web-search-tavily plugin registration', () => {
     await fiber.dispose()
   })
 
-  it('falls back to $TAVILY_BASE_URL when config omits baseURL', async () => {
+  it('ignores $TAVILY_BASE_URL and keeps the official endpoint', async () => {
     process.env.TAVILY_BASE_URL = 'https://env.tavily.test'
     const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
     vi.stubGlobal('fetch', fetchMock)
     const { ctx, fiber } = await mount({})
     await ctx.web.search({ query: 'q' })
     const [url] = fetchMock.mock.calls[0] as unknown as [string]
-    expect(url).toBe('https://env.tavily.test/search')
+    expect(url).toBe('https://api.tavily.com/search')
+    await fiber.dispose()
+  })
+
+  it('falls back to the official endpoint for a blank baseURL', async () => {
+    delete process.env.TAVILY_BASE_URL
+    const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { ctx, fiber } = await mount({ baseURL: '   ' })
+    await ctx.web.search({ query: 'q' })
+    const [url] = fetchMock.mock.calls[0] as unknown as [string]
+    expect(url).toBe('https://api.tavily.com/search')
     await fiber.dispose()
   })
 

@@ -57,14 +57,11 @@ export const inject = ['web']
 
 const DEFAULT_API_KEY_ENV = 'TAVILY_API_KEY'
 
-/** Environment variable naming this provider's endpoint. */
-const BASE_URL_ENV = 'TAVILY_BASE_URL'
-
 /**
  * Plugin config — the Loader entry's schema, which is also the form the
  * settings page renders. Every field is a `Volatile` ref at runtime, so
  * `apply` reads the current value per search instead of freezing the entry
- * value; `apply` fills env-var and constant defaults.
+ * value; `apply` fills the credential-environment fallback and constant defaults.
  *
  * The schema and the settings card deliberately disagree: the schema carries
  * the whole Tavily parameter surface (so a profile patch can still reach any
@@ -83,7 +80,7 @@ export interface Config {
   apiKey: Volatile<string | undefined>
   /** Credential reference / environment variable carrying the key; defaults to `TAVILY_API_KEY` (schema default). */
   apiKeyEnv: Volatile<string>
-  /** Endpoint base; `/search` is appended. Defaults to the public API, overridable via `TAVILY_BASE_URL`. */
+  /** Endpoint base; `/search` is appended. Defaults to the public API; override only through explicit configuration. */
   baseURL: Volatile<string | undefined>
   /** Retrieval depth sent as `search_depth`. Defaults to `basic` (schema default). */
   searchDepth: Volatile<TavilySearchDepth>
@@ -143,8 +140,7 @@ export const Config = z.object({
   // Declared here rather than only at the use site: a configuration surface
   // renders the resolved section, so a default the schema does not carry reads
   // there as no value at all.
-  // No default here: `apply` resolves config → $TAVILY_BASE_URL → default,
-  // and a schema default would shadow the environment fallback.
+  // No default here: `apply` resolves an unset or blank value to the public API.
   baseURL: z.string().volatile(),
   searchDepth: z.union(['ultra-fast', 'fast', 'basic', 'advanced'] as const).default(TAVILY_DEFAULT_SEARCH_DEPTH).volatile(),
   topic: z.union(['general', 'news', 'finance'] as const).volatile(),
@@ -180,9 +176,9 @@ export const WEB_SEARCH_TAVILY_SETTINGS_NAMESPACE = 'web-search-tavily'
 
 /**
  * Project the current config values into the options the provider serves its
- * next search with. Environment fallbacks stay here rather than in the
- * provider: every value it reads is already fully defaulted. Keyless mode is
- * the fallback when every key source is empty — this is not an error.
+ * next search with. The credential reference is the only ambient fallback;
+ * the endpoint is explicit configuration or the public API default. Keyless
+ * mode is the fallback when every key source is empty — this is not an error.
  * @param ctx - plugin context supplying the credential and environment planes.
  * @param config - the config values read from their `Volatile` refs.
  * @returns options for one search.
@@ -208,6 +204,7 @@ function resolveOptions(
   const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0
     ? config.apiKey
     : undefined
+  const configuredBaseURL = config.baseURL?.trim()
   return {
     ...literalApiKey === undefined ? {} : { apiKey: literalApiKey },
     resolveApiKey: async () => {
@@ -217,9 +214,9 @@ function resolveOptions(
       const ambient = launchEnvironmentOf(ctx).get(apiKeyEnv)
       return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
     },
-    baseURL: config.baseURL
-      ?? launchEnvironmentOf(ctx).get(BASE_URL_ENV)?.value
-      ?? TAVILY_DEFAULT_BASE_URL,
+    baseURL: configuredBaseURL !== undefined && configuredBaseURL !== ''
+      ? configuredBaseURL
+      : TAVILY_DEFAULT_BASE_URL,
     searchDepth: config.searchDepth,
     ...config.topic !== undefined ? { topic: config.topic } : {},
     ...config.timeRange !== undefined ? { timeRange: config.timeRange } : {},

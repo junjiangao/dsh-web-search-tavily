@@ -28,7 +28,7 @@ export declare const inject: string[];
  * Plugin config — the Loader entry's schema, which is also the form the
  * settings page renders. Every field is a `Volatile` ref at runtime, so
  * `apply` reads the current value per search instead of freezing the entry
- * value; `apply` fills env-var and constant defaults.
+ * value; `apply` fills the credential-environment fallback and constant defaults.
  *
  * The schema and the settings card deliberately disagree: the schema carries
  * the whole Tavily parameter surface (so a profile patch can still reach any
@@ -47,7 +47,7 @@ export interface Config {
     apiKey: Volatile<string | undefined>;
     /** Credential reference / environment variable carrying the key; defaults to `TAVILY_API_KEY` (schema default). */
     apiKeyEnv: Volatile<string>;
-    /** Endpoint base; `/search` is appended. Defaults to the public API, overridable via `TAVILY_BASE_URL`. */
+    /** Endpoint base; `/search` is appended. Defaults to the public API; override only through explicit configuration. */
     baseURL: Volatile<string | undefined>;
     /** Retrieval depth sent as `search_depth`. Defaults to `basic` (schema default). */
     searchDepth: Volatile<TavilySearchDepth>;
