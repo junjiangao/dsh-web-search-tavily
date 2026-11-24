@@ -1,11 +1,9 @@
-/** Standard-bundle shape and the package-owned invariant companion. */
+/** Standard-bundle shape and the plugin display metadata. */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
-import type { Context } from '@deepseek-ai/cordis'
-import * as invariantPlugin from '../src/invariant.ts'
+import { describe, expect, it } from 'vitest'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -82,23 +80,5 @@ describe('plugin display metadata', () => {
     const file = join(root, manifest.icon ?? '')
     expect(existsSync(file)).toBe(true)
     expect(statSync(file).size).toBeLessThanOrEqual(256 * 1024)
-  })
-})
-
-describe('web-search-tavily invariant companion', () => {
-  it('registers the package manifest with an empty installer', async () => {
-    const register = vi.fn(() => () => {})
-    const ctx = { invariants: { register } } as unknown as Context
-    const dispose = await invariantPlugin.apply(ctx)
-    expect(register).toHaveBeenCalledOnce()
-    const [packageName, installer] = register.mock.calls[0] as unknown as [string, () => void]
-    expect(packageName).toBe('@junjiangao/dsh-web-search-tavily')
-    installer()
-    dispose()
-  })
-
-  it('exports companion metadata', () => {
-    expect(invariantPlugin.name).toBe('web-search-tavily-invariant')
-    expect(invariantPlugin.inject).toEqual(['invariants'])
   })
 })

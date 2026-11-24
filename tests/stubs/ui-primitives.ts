@@ -22,7 +22,13 @@ function region(name: string): string {
   const start = bundle.indexOf(marker)
   const end = bundle.indexOf('//#endregion', start)
   if (start < 0 || end < start) throw new Error(`Missing published settings-form region: ${name}`)
-  return bundle.slice(start + marker.length, end).replace(/\bcss\$\d+\b/gu, 'css')
+  // The published bundle inlines the fields stylesheet under a hashed CSS
+  // binding (`css$1`) in earlier builds and under the module's default binding
+  // (`fields_module_css_default`) in 0.2.3; both are replaced with the empty
+  // class map this stub passes, so the extracted regions evaluate standalone.
+  return bundle.slice(start + marker.length, end)
+    .replace(/\bcss\$\d+\b/gu, 'css')
+    .replace(/\b[A-Za-z_$][\w$]*_module_css_default\b/gu, 'css')
 }
 export function Tag(_props: unknown): unknown { return null }
 export function Switch(_props: unknown): unknown { return null }

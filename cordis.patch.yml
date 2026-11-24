@@ -10,9 +10,11 @@
 #     config:
 #       searchProvider: tavily   # restate every other key the web row carries
 #
-# The base `web` row currently carries only `searchProvider` (deepseek-official);
-# because config wins over the environment, exporting DSH_WEB_SEARCH_PROVIDER
-# alone has no effect until the row drops that key.
+# On dsh 0.2.3 the base `web` row carries only `fetchProvider: http`; it sets
+# no `searchProvider`, so leaving the row unconfigured keeps the seam's
+# route-based automatic selection and lets `DSH_WEB_SEARCH_PROVIDER` apply.
+# Once a profile sets `searchProvider` explicitly, config wins over the
+# environment and the variable no longer selects the provider.
 
 - insert:
     - id: web-search-tavily

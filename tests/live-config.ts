@@ -5,7 +5,7 @@
  * and a committed edit updates those refs in place.
  *
  * Mirrors `packages/settings/settings/tests/live-config.ts` of
- * deepseek-harness 0.2.0-rc.1.
+ * deepseek-harness 0.2.3-alpha.2.
  */
 
 import { Context, resolveConfig, type Plugin } from '@deepseek-ai/cordis'
