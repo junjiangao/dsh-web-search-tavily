@@ -29,14 +29,14 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.3.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.4.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
 
 ## 指定 tavily 为 search provider
 
-在 Tavily 插件卡片开启「使用 Tavily 搜索」并保存，会同时将 `web.searchProvider` 设为 `tavily`、`web.fetchProvider` 设为 `http`。关闭并保存会恢复此前的两个提供方；在官方设置页切换后，Tavily 卡片也会同步显示实际选择。插件可以共存，每次搜索只使用选中的提供方。
+在 Tavily 插件卡片开启「使用 Tavily 搜索」并保存，会同时将 `web.searchProvider` 设为 `tavily`、`web.fetchProvider` 设为 `http`。关闭并保存会恢复此前的两个提供方；若此前没有显式选择，则清除两个覆盖项，让 seam 的自动选择重新生效。在官方设置页切换后，Tavily 卡片也会同步显示实际选择。插件可以共存，每次搜索只使用选中的提供方。
 
 自动切换需要宿主公开可写的 `web` 配置命名空间；旧宿主仍可按下述方式手动配置。卸载或禁用 Tavily 插件行前，应先关闭此开关并保存，避免 `web` 继续指向已移除的提供方。
 
@@ -67,7 +67,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 | 分组 | 配置键 | 默认值 | 含义 |
 |---|---|---|---|
 | 凭据 | `apiKey` 输入框 | （空） | 只写密码控件，通过宿主凭据服务保存到 `apiKeyEnv` 对应的引用。留空保留现有密钥；成功后清空输入，失败保留草稿。 |
-| 凭据 | `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。必须匹配凭据语法（`^[A-Za-z_][A-Za-z0-9_]*$`）；不合语法的名字会让搜索以 `TAVILY_INVALID_CREDENTIAL_REF` 失败，而不是被静默读作“未配置密钥”。 |
+| 凭据 | `apiKeyEnv` | `TAVILY_API_KEY` | 携带密钥的凭据引用／环境变量名。必须匹配凭据语法（`^[A-Za-z_][A-Za-z0-9_]*$`）；不合语法的名字会让提供方不可用（固定选择本提供方时 seam 报 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`），其自身的 `search()` 仍报 `TAVILY_INVALID_CREDENTIAL_REF`，而不是被静默读作“未配置密钥”。 |
 | 检索 | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`。精度/延迟/成本的主开关。 |
 | 检索 | `includeDomains` | `[]` | 限定域名列表，发送为 `include_domains`；空列表不发送。 |
 | 检索 | `excludeDomains` | `[]` | 排除域名列表，发送为 `exclude_domains`；空列表不发送。 |
@@ -147,7 +147,7 @@ shell 通过冻结模块表共享**组件**，但不共享它的 CSS module，�
 
 ## 模型体验
 
-经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（保留 HTTP 状态码，并附加 Tavily 错误信息）；取消以 `WEB_ABORTED` 呈现；`apiKeyEnv` 不合凭据语法时以 `TAVILY_INVALID_CREDENTIAL_REF` 呈现，消息里点名该设置及其取值。非法基址或参数边界以 `TAVILY_INVALID_CONFIG` 呈现。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
+经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（保留 HTTP 状态码，并附加 Tavily 错误信息）；取消以 `WEB_ABORTED` 呈现；`apiKeyEnv` 不合凭据语法时提供方对 seam 不可用（固定选择时以 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE` 呈现），其自身 `search()` 仍以 `TAVILY_INVALID_CREDENTIAL_REF` 呈现并点名该设置及其取值；非法基址或参数边界同样先表现为不可用，直接调用 `search()` 时以 `TAVILY_INVALID_CONFIG` 呈现。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
 
 #### KV Cache 影响
 

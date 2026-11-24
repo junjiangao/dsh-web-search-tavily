@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { WebSearchProvider } from '@deepseek-ai/dsh-web'
-import WebRuntime from '@deepseek-ai/dsh-web'
+import WebRuntime, { WebError } from '@deepseek-ai/dsh-web'
 import * as tavilyPlugin from '../src/index.ts'
 import {
   TAVILY_PROVIDER_ID,
@@ -382,6 +382,23 @@ describe('TavilySearchProvider request mapping', () => {
     expect(bodies.map((body: { max_results?: number }) => body.max_results)).toEqual([20, 5])
   })
 
+  it('flags a result that reached the provider cap when the request asked for more', async () => {
+    const results = Array.from({ length: 20 }, (_, index) => ({ url: `https://a${index}.test` }))
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ results })))
+    const result = await makeProvider().search({ query: 'q', maxResults: 25 })
+    expect(result.sources).toHaveLength(20)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('does not flag an exhausted result set below the provider cap', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      results: [{ url: 'https://a.test' }, { url: 'https://b.test' }],
+    })))
+    const result = await makeProvider().search({ query: 'q', maxResults: 25 })
+    expect(result.sources).toHaveLength(2)
+    expect(result.truncated).toBe(false)
+  })
+
   it('forwards the abort signal', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
     vi.stubGlobal('fetch', fetchMock)
@@ -725,17 +742,22 @@ describe('web-search-tavily plugin registration', () => {
     await fiber.dispose()
   })
 
-  it('classifies an apiKeyEnv outside the credential grammar as a web error, not a bare TypeError', async () => {
+  it('reports an apiKeyEnv outside the credential grammar as unavailable, not a thrown TypeError', async () => {
     const { ctx, fiber } = await mount({ apiKeyEnv: 'my key' })
     // `credentialRef` answers a name outside the grammar with a bare
     // `TypeError`, which carries no routable `code` and never names the setting
-    // that is wrong. The seam's callers route on `code`, so it is reported as a
-    // web error instead — and at use time, not at load, so a typo cannot take
-    // the plugin (or the settings card that fixes it) down at boot.
+    // that is wrong. The provider's own `search()` still reports the precise
+    // WebError, but the seam's availability filter must see a boolean: a
+    // thrown check would fail selection for every provider.
     await expect(ctx.web.search({ query: 'q' })).rejects.toThrow(expect.objectContaining({
+      code: 'WEB_PROVIDER_CONFIGURED_UNAVAILABLE',
+    }))
+    await expect(new TavilySearchProvider(() => {
+      throw new WebError('Tavily search: apiKeyEnv "my key" is not a credential reference name', 'TAVILY_INVALID_CREDENTIAL_REF')
+    }).search({ query: 'q' })).rejects.toMatchObject({
       code: 'TAVILY_INVALID_CREDENTIAL_REF',
       message: expect.stringContaining('apiKeyEnv "my key"'),
-    }))
+    })
     await fiber.dispose()
   })
 
@@ -763,6 +785,17 @@ describe('web-search-tavily provider selection with multiple providers', () => {
     await ctx.plugin(tavilyPlugin, {})
     await expect(ctx.web.search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_AMBIGUOUS' }))
+  })
+
+  it('skips an unavailable tavily and uses the remaining provider when none is configured', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, {})
+    const exaSearch = vi.fn(fakeExa.search)
+    ctx.web.registerSearchProvider({ ...fakeExa, search: exaSearch })
+    await ctx.plugin(tavilyPlugin, { apiKeyEnv: 'my key' })
+    await expect(ctx.web.search({ query: 'q' }))
+      .resolves.toMatchObject({ sources: [{ url: 'https://exa.test' }], truncated: false })
+    expect(exaSearch).toHaveBeenCalledOnce()
   })
 
   it('uses tavily when searchProvider pins it', async () => {

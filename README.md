@@ -29,14 +29,14 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.3.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.4.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
 
 ## Activate tavily as the search provider
 
-Enable **Use Tavily search** on the Tavily card and save to select `web.searchProvider: tavily` and `web.fetchProvider: http` together. Disable and save to restore the previous pair. Changes from the official settings page are reflected in this card. Both plugins can stay installed; each search uses the selected provider.
+Enable **Use Tavily search** on the Tavily card and save to select `web.searchProvider: tavily` and `web.fetchProvider: http` together. Disable and save to restore the previous pair; when there was no explicit previous selection, both overrides are cleared so the seam's automatic selection applies again. Changes from the official settings page are reflected in this card. Both plugins can stay installed; each search uses the selected provider.
 
 The switch requires a writable `web` settings namespace. Older Hosts can use the manual configuration below. Before disabling the plugin row or uninstalling Tavily, turn off this switch and save so `web` does not keep pointing at a removed provider.
 
@@ -67,7 +67,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 | Section | Key | Default | Meaning |
 |---|---|---|---|
 | Credentials | `apiKey` input | (blank) | Write-only password control, saved through Host credentials under `apiKeyEnv`. Blank keeps the existing key; success clears the input and failure retains the draft. |
-| Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. Must match the credential grammar (`^[A-Za-z_][A-Za-z0-9_]*$`); a name outside it fails the search with `TAVILY_INVALID_CREDENTIAL_REF` instead of silently reading as "no key". |
+| Credentials | `apiKeyEnv` | `TAVILY_API_KEY` | Credential reference / environment variable carrying the key. Must match the credential grammar (`^[A-Za-z_][A-Za-z0-9_]*$`); a name outside it makes the provider unavailable (the seam reports `WEB_PROVIDER_CONFIGURED_UNAVAILABLE` when this provider is pinned), and its own `search()` reports `TAVILY_INVALID_CREDENTIAL_REF`, instead of silently reading as "no key". |
 | Retrieval | `searchDepth` | `basic` | `ultra-fast` | `fast` | `basic` | `advanced`. The main precision/latency/cost switch. |
 | Retrieval | `includeDomains` | `[]` | Domain list sent as `include_domains`; an empty list is omitted. |
 | Retrieval | `excludeDomains` | `[]` | Domain list sent as `exclude_domains`; an empty list is omitted. |
@@ -148,7 +148,7 @@ A success envelope must be an object containing a `results` array. Malformed env
 
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`; an `apiKeyEnv` outside the credential grammar surfaces as `TAVILY_INVALID_CREDENTIAL_REF`, whose message names the setting and its value. Credential-bearing requests reject redirects before the `Location` target is contacted.
+Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`; an `apiKeyEnv` outside the credential grammar makes the provider unavailable to the seam (`WEB_PROVIDER_CONFIGURED_UNAVAILABLE` when pinned); the provider's own `search()` still reports `TAVILY_INVALID_CREDENTIAL_REF`, whose message names the setting and its value. Credential-bearing requests reject redirects before the `Location` target is contacted.
 
 #### KV Cache effect
 
@@ -175,6 +175,7 @@ The client half is typechecked against the **real** published client packages �
 - **`includeImages` / `includeImageDescriptions` / `includeFavicon` / `includeUsage` were removed** — the seam has no surface for them, so they only changed the request body. An older patch that still sets them should drop those keys.
 - **Combinations Tavily rejects with a 400 are handled in the provider** — `include_domains_mode` without `include_domains`, and `filter_by_language` without `language`, are dropped rather than sent (both verified to return 400).
 - **`safe_search` conflicts with the `fast`/`ultra-fast` depths** — Tavily answers that combination with a 400 (`Safe search parameter is not supported for fast or ultra-fast search_depth.`); the plugin does not intercept it and surfaces the message as-is.
+- **Tavily caps `max_results` at 20** — a larger configured or per-request bound is sent as 20, and the provider marks `truncated` when the response reaches that cap, so `dsh-tool-web` shows its truncation note instead of silently presenting 20 as the full set.
 - **Selection stays user-owned**: installation registers the provider; the card's switch selects search and fetch together when saved (see above).
 - **Abort classification is signal-based**: a fetch abort or an already-aborted signal maps to `WEB_ABORTED`.
 - **One entry point: the bundle's own page** — `plugins.bundle.config`, keyed by the *declared* bundle name, which the client resolves from the plugin manager's bundle list so an aliased install (a profile dependency key left over from a package rename) still matches; a package-name key alone would render nothing. `plugins.row.config` is deliberately not claimed, so that row carries no configure control of its own, and `plugins.item` would add a default-artwork card to the Official group.

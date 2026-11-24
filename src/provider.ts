@@ -238,7 +238,15 @@ export class TavilySearchProvider implements WebSearchProvider {
   // mode is legitimate, so an empty key never makes the provider unavailable.
   /* jscpd:ignore-start */
   available(): boolean {
-    return validOptions(this.resolveOptions())
+    // `available()` is the seam's cheap filter for automatic selection, so a
+    // throwing config snapshot must not escape: that would fail selection for
+    // every provider, not just this one. `search()` still reports the precise
+    // WebError when a caller reaches it.
+    try {
+      return validOptions(this.resolveOptions())
+    } catch {
+      return false
+    }
   }
   /* jscpd:ignore-end */
 
@@ -252,6 +260,10 @@ export class TavilySearchProvider implements WebSearchProvider {
     throwIfSearchAborted(signal)
     // A per-request bound wins over the configured default; either may be absent.
     const numResults = request.maxResults ?? options.maxResults
+    // Tavily caps max_results at 20, so a larger bound is clipped in the body.
+    // The result is flagged below once it reaches that cap, so the seam and the
+    // tool do not present a clipped list as complete.
+    const capped = numResults !== undefined && numResults > TAVILY_MAX_RESULTS
     const body = buildSearchRequest(request.query, options, numResults)
     let response: Response
     try {
@@ -294,7 +306,10 @@ export class TavilySearchProvider implements WebSearchProvider {
 
     try {
       const payload: unknown = await response.json()
-      return mapTavilyResponse(payload)
+      const result = mapTavilyResponse(payload)
+      return capped && result.sources.length >= TAVILY_MAX_RESULTS
+        ? { ...result, truncated: true }
+        : result
     } catch (error: unknown) {
       if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
       throw new WebError(`Tavily returned an unprocessable response body: ${String(error)}`, 'WEB_PROVIDER_ERROR', { cause: error })

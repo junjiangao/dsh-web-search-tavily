@@ -3,7 +3,7 @@ import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client
 import {
   SettingsFormModel, settingsTextField,
   type SettingsFieldState, type SettingsFormActions, type SettingsFormLabels,
-  type SettingsFormScope, type SettingsFormShell,
+  type SettingsFormPathOp, type SettingsFormScope, type SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CredentialsRemote, RemoteService, SettingsDescribeFace } from './context.ts'
 import { specOf, TAVILY_FIELDS, type TavilyField } from './fields.ts'
@@ -50,7 +50,7 @@ export class TavilyCardController {
   private disposed = false
   private saving = false
   private failed = false
-  private previous: { searchProvider: string; fetchProvider: string } | undefined
+  private previous: { searchProvider: string | undefined; fetchProvider: string | undefined } | undefined
 
   constructor(
     private readonly scope: SettingsFormScope<TavilySettings>,
@@ -133,29 +133,34 @@ export class TavilyCardController {
     this.failed = false
     const snapshot = this.web.getSnapshot()
     const current = snapshot.value
-    if (enabled && current?.searchProvider !== 'tavily') {
-      this.previous = {
-        searchProvider: stringOf(current?.searchProvider, 'deepseek-official'),
-        fetchProvider: stringOf(current?.fetchProvider, 'http'),
-      }
-    }
-    const settings = this.scope.getSnapshot().value
-    const base = snapshot.base as TavilySettings | undefined
-    const inheritedSearch = stringOf(base?.searchProvider, 'deepseek-official')
-    const target = enabled ? { searchProvider: 'tavily', fetchProvider: 'http' } : {
-      searchProvider: this.previous?.searchProvider ?? stringOf(settings?.previousSearchProvider,
-        inheritedSearch === 'tavily' ? 'deepseek-official' : inheritedSearch),
-      fetchProvider: this.previous?.fetchProvider ?? stringOf(settings?.previousFetchProvider, stringOf(base?.fetchProvider, 'http')),
-    }
     // 保存前再次关闭开关，只撤销选择草稿。
     if (!enabled && current?.searchProvider !== 'tavily') {
       this.selection.actions().discard()
       this.previous = undefined
-    } else {
-      for (const [key, value] of Object.entries(target)) {
-        if (base?.[key] === value) this.selection.actions().resetField(key)
-        else this.selection.actions().edit(key, value)
+      this.publish()
+      return
+    }
+    if (enabled && current?.searchProvider !== 'tavily') {
+      // 只记录用户层的显式选择：base 的 provider 是组合默认值，关闭后应让
+      // 它重新生效，而不是把当时的值固化成一条用户覆盖。
+      const user = snapshot.user as TavilySettings | undefined
+      this.previous = {
+        searchProvider: explicitString(user?.searchProvider),
+        fetchProvider: explicitString(user?.fetchProvider),
       }
+    }
+    const settings = this.scope.getSnapshot().value
+    const target = enabled ? { searchProvider: 'tavily', fetchProvider: 'http' } : {
+      searchProvider: this.previous !== undefined
+        ? this.previous.searchProvider
+        : explicitString(settings?.previousSearchProvider),
+      fetchProvider: this.previous !== undefined
+        ? this.previous.fetchProvider
+        : explicitString(settings?.previousFetchProvider),
+    }
+    for (const [key, value] of Object.entries(target)) {
+      if (value === undefined) this.selection.actions().resetField(key)
+      else this.selection.actions().edit(key, value)
     }
     this.publish()
   }
@@ -171,11 +176,27 @@ export class TavilyCardController {
       if (this.form.shell().failed || this.form.shell().dirty) { this.failed = true; return }
       this.form.actions().discard()
       if (this.selection?.shell().dirty && this.previous !== undefined) {
+        // 只持久化用户层的前一选择；automatic 用 unset 表示，避免下次关闭时
+        // 把过期的 provider 当作“原值”恢复。与当前已存值相同的字段不重写。
         const snapshot = this.scope.getSnapshot()
-        if (!await this.scope.mutate([
-          { op: 'set', path: ['previousSearchProvider'], value: this.previous.searchProvider },
-          { op: 'set', path: ['previousFetchProvider'], value: this.previous.fetchProvider },
-        ], snapshot.revision)) { this.failed = true; return }
+        const user = snapshot.user as TavilySettings | undefined
+        const ops: SettingsFormPathOp[] = []
+        const previousFields = [
+          ['searchProvider', 'previousSearchProvider'],
+          ['fetchProvider', 'previousFetchProvider'],
+        ] as const
+        for (const [field, path] of previousFields) {
+          const value = this.previous[field]
+          if (value === undefined) {
+            if (user?.[path] !== undefined) ops.push({ op: 'unset', path: [path] })
+          } else if (user?.[path] !== value) {
+            ops.push({ op: 'set', path: [path], value })
+          }
+        }
+        if (ops.length > 0 && !await this.scope.mutate(ops, snapshot.revision)) {
+          this.failed = true
+          return
+        }
       }
       if (this.disposed) return
       await this.selection?.save()
@@ -277,6 +298,11 @@ function refOf(section: TavilySettings | undefined): string {
   return stringOf(section?.apiKeyEnv, DEFAULT_API_KEY_REF)
 }
 
+/** 非空字符串的原始 trim 值；空白或其他类型返回 undefined（不提供假默认值）。 */
+function explicitString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
 function stringOf(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback
+  return explicitString(value) ?? fallback
 }

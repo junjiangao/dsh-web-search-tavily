@@ -4,9 +4,13 @@ import { TavilyCardController } from '../client-src/controller.ts'
 import type { CredentialsRemote, SettingsDescribeFace } from '../client-src/context.ts'
 import type { SettingsFormPathOp, SettingsFormScope } from '@deepseek-ai/dsh-client-ui-primitives'
 
-function scopeOf(initial: Record<string, unknown> = {}, writable = true) {
+function scopeOf(
+  initial: Record<string, unknown> = {},
+  writable = true,
+  userLayer: Record<string, unknown> = {},
+) {
   const listeners = new Set<() => void>()
-  let snapshot = { status: 'ready' as const, value: { ...initial }, base: { ...initial }, user: {} as Record<string, unknown>, writable, revision: 1 }
+  let snapshot = { status: 'ready' as const, value: { ...initial, ...userLayer }, base: { ...initial }, user: { ...userLayer } as Record<string, unknown>, writable, revision: 1 }
   const notify = () => { for (const listener of listeners) listener() }
   const mutate = vi.fn(async (ops: readonly SettingsFormPathOp[], revision?: number) => {
     if (!snapshot.writable || (revision !== undefined && revision !== snapshot.revision)) return false
@@ -173,7 +177,8 @@ describe('provider selection', () => {
   it('switches both providers atomically and restores the previous pair after reopening the card', async () => {
     const config = scopeOf()
     const before = { searchProvider: 'deepseek-search-api', fetchProvider: 'deepseek-fetch-api' }
-    const web = scopeOf(before)
+    // The user layer carries the prior explicit pair; the composition layer is empty.
+    const web = scopeOf({}, true, before)
     let controller = new TavilyCardController(config.scope, web.scope)
     controller.inject().actions.select(true)
     expect(web.mutate).not.toHaveBeenCalled()
@@ -190,6 +195,39 @@ describe('provider selection', () => {
     await save(controller)
     expect(web.scope.getSnapshot().value).toEqual(before)
     expect(controller.inject().store.getSnapshot().enabled).toBe(false)
+    controller.dispose()
+  })
+
+  it('restores automatic search while keeping the composed fetch provider', async () => {
+    const config = scopeOf()
+    // dsh 0.2.3 composes only `fetchProvider: http`; search has no default.
+    const web = scopeOf({ fetchProvider: 'http' })
+    let controller = new TavilyCardController(config.scope, web.scope)
+    controller.inject().actions.select(true)
+    await save(controller)
+    expect(web.scope.getSnapshot().value).toEqual({ searchProvider: 'tavily', fetchProvider: 'http' })
+    // No explicit prior selection: nothing is persisted, so automatic stays automatic.
+    expect(config.mutate).not.toHaveBeenCalled()
+    expect(JSON.stringify(config.scope.getSnapshot().value)).not.toContain('deepseek-official')
+    controller.dispose()
+    controller = new TavilyCardController(config.scope, web.scope)
+    controller.inject().actions.select(false)
+    await save(controller)
+    expect(web.scope.getSnapshot().value).toEqual({ fetchProvider: 'http' })
+    expect(web.mutate.mock.calls.at(-1)?.[0]).toEqual([{ op: 'unset', path: ['searchProvider'] }])
+    expect(controller.inject().store.getSnapshot().enabled).toBe(false)
+    controller.dispose()
+  })
+
+  it('clears a stale explicit previous selection when the current pair is automatic', async () => {
+    const config = scopeOf({}, true, { previousSearchProvider: 'deepseek-official', previousFetchProvider: 'http' })
+    const web = scopeOf({ fetchProvider: 'http' })
+    const controller = new TavilyCardController(config.scope, web.scope)
+    controller.inject().actions.select(true)
+    await save(controller)
+    expect(config.scope.getSnapshot().value).not.toHaveProperty('previousSearchProvider')
+    expect(config.scope.getSnapshot().value).not.toHaveProperty('previousFetchProvider')
+    expect(web.scope.getSnapshot().value).toEqual({ searchProvider: 'tavily', fetchProvider: 'http' })
     controller.dispose()
   })
 
@@ -223,7 +261,7 @@ describe('provider selection', () => {
   it('does not change providers if saving the previous selection is refused', async () => {
     const config = scopeOf()
     config.mutate.mockResolvedValue(false)
-    const web = scopeOf({ searchProvider: 'custom', fetchProvider: 'custom-fetch' })
+    const web = scopeOf({}, true, { searchProvider: 'custom', fetchProvider: 'custom-fetch' })
     const controller = new TavilyCardController(config.scope, web.scope)
     controller.inject().actions.select(true)
     await save(controller)
