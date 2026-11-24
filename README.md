@@ -29,14 +29,14 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # or a packed tarball (no build permission needed)
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.5.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.6.tgz
 ```
 
 Built `lib/` artifacts are committed to the repository, and the package declares no lifecycle scripts, so a git install needs **no build permission** — pnpm never asks for an `allowBuilds` entry. When you develop the plugin, rebuild with `pnpm build` and commit the updated `lib/` together with the source change. (A source-only revision without `lib/` would need the pnpm `allowBuilds` step; prefer the main-branch flow above.)
 
 ## Activate tavily as the search provider
 
-Enable **Use Tavily search** on the Tavily card and save to select `web.searchProvider: tavily` and `web.fetchProvider: http` together. Disable and save to restore the previous pair; when there was no explicit previous selection, both overrides are cleared so the seam's automatic selection applies again. Changes from the official settings page are reflected in this card. Both plugins can stay installed; each search uses the selected provider.
+Enable **Use Tavily search** on the Tavily card and save to select `web.searchProvider: tavily` and `web.fetchProvider: http` together. Disable and save to restore the previous pair; when there was no explicit previous selection, both overrides are cleared so the seam's automatic selection applies again. Profiles saved before the record marker existed have no trusted previous pair; their first disable returns to Automatic, and the next enable records a fresh pair. Changes from the official settings page are reflected in this card. Both plugins can stay installed; each search uses the selected provider.
 
 The switch requires a writable `web` settings namespace. Older Hosts can use the manual configuration below. Before disabling the plugin row or uninstalling Tavily, turn off this switch and save so `web` does not keep pointing at a removed provider.
 
@@ -86,7 +86,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 | `filterByPublishedDate` | `false` | Also drops every result with no detectable date. |
 | `maxResults` | (none) | `dsh-tool-web` sends `maxResults` on every request (8 by default), so this default never applies in the shipped deployment. |
 | `includeAnswer` | `false` | A harness with its own model synthesizes its own answer; Tavily recommends against it when you bring your own model. |
-| `includeRawContent` | `false` | The snippet already prefers `content` and only falls back to `raw_content` when it is blank, so the switch changes little. |
+| `includeRawContent` | `false` | `raw_content` becomes the model-facing summary; `dsh-tool-web` caps summaries, so enabling this no longer exposes unbounded page text through the snippet. |
 | `autoParameters` | `false` | Auto-selects parameters (possibly `advanced` silently), which fights the explicit `searchDepth`. |
 | `exactMatch` | `false` | Only meaningful when the query carries quoted phrases — query-level. |
 | `country` | (none) | Honored only with `topic=general`, and it takes a country enum, so a typo is a 400. |
@@ -99,7 +99,7 @@ The form draws three sections — **credentials / retrieval / advanced** — and
 
 Key resolution order: literal `apiKey` → `dsh-credentials` (`apiKeyEnv` ref) → environment (`apiKeyEnv`, default `TAVILY_API_KEY`) → **keyless**.
 
-When replacing a legacy literal key, the card sets `useCredential: true` after storing the new credential, explicitly bypassing the old literal. The old configuration remains available for rollback and is never echoed into the input. The card also stores `previousSearchProvider` / `previousFetchProvider` to restore the previous selection. These three settings are not sent to Tavily.
+When replacing a legacy literal key, the card sets `useCredential: true` after storing the new credential, explicitly bypassing the old literal. The old configuration remains available for rollback and is never echoed into the input. The card also stores `previousSearchProvider` / `previousFetchProvider` and `previousSelectionRecorded` to restore a trusted previous selection. These four settings are not sent to Tavily.
 
 ```yaml
 # With key (env)
@@ -142,13 +142,13 @@ The Plugins page reads this plugin's display text from `locale/en.json` — the 
 A success envelope must be an object containing a `results` array. Malformed envelopes and error payloads fail as `WEB_PROVIDER_ERROR`; individual sources with invalid HTTP(S) URLs are skipped. HTTP errors retain their status alongside the provider message. Invalid endpoints and option bounds fail as `TAVILY_INVALID_CONFIG`.
 
 - `answer` (when `includeAnswer` is enabled) → `content`.
-- Each result → `WebSearchSource`: `url`, `title`, `publishedAt` ← `published_date`, and `snippet` preferring `content` with `raw_content` as fallback. Blank fields are omitted; URL-less results are dropped.
+- Each result → `WebSearchSource`: `url`, `title`, `publishedAt` ← `published_date`, `snippet` ← `content`, and `summary` ← `raw_content`. Blank fields are omitted; URL-less results are dropped.
 - `max_results` is clamped to 20 (Tavily's documented bound); the seam still enforces the final `maxResults` truncation (`truncated`).
 - `published_date` is normalized to **ISO-8601**: Tavily sends RFC-1123 (`Thu, 20 Aug 2026 00:00:00 GMT`) while the seam documents an ISO-8601 string, so passing it through would break any consumer that parses the field as documented. An unparseable value is dropped rather than forwarded in the wrong format.
 
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`; an `apiKeyEnv` outside the credential grammar makes the provider unavailable to the seam (`WEB_PROVIDER_CONFIGURED_UNAVAILABLE` when pinned); the provider's own `search()` still reports `TAVILY_INVALID_CREDENTIAL_REF`, whose message names the setting and its value. Credential-bearing requests reject redirects before the `Location` target is contacted.
+Indirectly, through `dsh-tool-web`: the model sees the `maxResults`-bounded URLs, titles, snippets, summaries when raw content is enabled, and publication dates, plus the generated answer when `includeAnswer` is enabled. Provider failures surface as `WebError` `WEB_PROVIDER_ERROR` (message from the Tavily error body, including the keyless-limit envelope); cancellation surfaces as `WEB_ABORTED`; an `apiKeyEnv` outside the credential grammar makes the provider unavailable to the seam (`WEB_PROVIDER_CONFIGURED_UNAVAILABLE` when pinned); the provider's own `search()` still reports `TAVILY_INVALID_CREDENTIAL_REF`, whose message names the setting and its value. Credential-bearing requests reject redirects before the `Location` target is contacted.
 
 #### KV Cache effect
 

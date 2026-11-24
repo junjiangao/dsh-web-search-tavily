@@ -29,14 +29,14 @@ dsh plugin --profile <name> add /path/to/dsh-web-search-tavily
 
 # 或打包 tarball（无需构建授权）
 pnpm pack
-dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.5.tgz
+dsh plugin --profile <name> add ./junjiangao-dsh-web-search-tavily-0.4.6.tgz
 ```
 
 构建产物 `lib/` 已提交进仓库，且包内不声明任何生命周期脚本，因此 git 安装**无需构建授权**——pnpm 不会要求 `allowBuilds`。开发时请用 `pnpm build` 重新构建，并把更新后的 `lib/` 与源码改动一起提交。（不含 `lib/` 的纯源码版本才需要 `allowBuilds` 步骤；建议直接用上面的 main 分支流程。）
 
 ## 指定 tavily 为 search provider
 
-在 Tavily 插件卡片开启「使用 Tavily 搜索」并保存，会同时将 `web.searchProvider` 设为 `tavily`、`web.fetchProvider` 设为 `http`。关闭并保存会恢复此前的两个提供方；若此前没有显式选择，则清除两个覆盖项，让 seam 的自动选择重新生效。在官方设置页切换后，Tavily 卡片也会同步显示实际选择。插件可以共存，每次搜索只使用选中的提供方。
+在 Tavily 插件卡片开启「使用 Tavily 搜索」并保存，会同时将 `web.searchProvider` 设为 `tavily`、`web.fetchProvider` 设为 `http`。关闭并保存会恢复此前的两个提供方；若此前没有显式选择，则清除两个覆盖项，让 seam 的自动选择重新生效。引入记录标记前保存的旧配置没有可信的前值：第一次关闭会回到 Automatic，再次开启时会记录新的前值。在官方设置页切换后，Tavily 卡片也会同步显示实际选择。插件可以共存，每次搜索只使用选中的提供方。
 
 自动切换需要宿主公开可写的 `web` 配置命名空间；旧宿主仍可按下述方式手动配置。卸载或禁用 Tavily 插件行前，应先关闭此开关并保存，避免 `web` 继续指向已移除的提供方。
 
@@ -86,7 +86,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 | `filterByPublishedDate` | `false` | 会连带丢弃没有日期的结果。 |
 | `maxResults` | （无） | `dsh-tool-web` 每次请求都会带 `maxResults`（默认 8），因此该默认值在现行部署下不生效。 |
 | `includeAnswer` | `false` | 自带模型的 harness 会自行综合答案；Tavily 官方也建议自备模型时不要开启。 |
-| `includeRawContent` | `false` | snippet 已优先取 `content`，`raw_content` 仅在 `content` 为空时回退，开与不开差别很小。 |
+| `includeRawContent` | `false` | `raw_content` 会作为模型可见的 summary；`dsh-tool-web` 会截断 summary，因此开启后不再把无界页面正文放进 snippet。 |
 | `autoParameters` | `false` | 会自动挑参数（可能静默升到 `advanced`），与本插件的显式 `searchDepth` 冲突。 |
 | `exactMatch` | `false` | 仅在查询里带引号短语时才有意义，属查询级。 |
 | `country` | （无） | 只在 `topic=general` 下生效，且取值是国家枚举，误填即 400。 |
@@ -99,7 +99,7 @@ Host 的 `Config` schema 仍承载 Tavily 的完整参数面（profile patch 可
 
 密钥解析顺序：字面量 `apiKey` → `dsh-credentials`（`apiKeyEnv` 引用）→ 环境变量（`apiKeyEnv`，默认 `TAVILY_API_KEY`）→ **keyless**。
 
-兼容旧配置时，卡片成功保存凭据后会设置 `useCredential: true`，显式跳过旧字面密钥。旧值保留以便回退，且不会回显到输入框。`previousSearchProvider` / `previousFetchProvider` 由卡片记录，用于关闭开关后恢复选择；这三项不发送到 Tavily。
+兼容旧配置时，卡片成功保存凭据后会设置 `useCredential: true`，显式跳过旧字面密钥。旧值保留以便回退，且不会回显到输入框。`previousSearchProvider` / `previousFetchProvider` 与 `previousSelectionRecorded` 由卡片记录，用于关闭开关后恢复可信的前值；这四项不发送到 Tavily。
 
 ```yaml
 # 有 key（环境变量）
@@ -141,13 +141,13 @@ shell 通过冻结模块表共享**组件**，但不共享它的 CSS module，�
 
 - `answer`（启用 `includeAnswer` 时）→ `content`。
 - 成功响应必须是包含 `results` 数组的对象；畸形响应及错误信封不会被误报为零结果成功。
-- 每条结果 → `WebSearchSource`：`url`、`title`、`publishedAt` ← `published_date`、`snippet` 优先 `content`、空时回退 `raw_content`。类型错误的可选字段省略；缺失或无效的 HTTP(S) URL 对应结果被丢弃，不影响其他正常结果。
+- 每条结果 → `WebSearchSource`：`url`、`title`、`publishedAt` ← `published_date`、`snippet` ← `content`、`summary` ← `raw_content`。类型错误的可选字段省略；缺失或无效的 HTTP(S) URL 对应结果被丢弃，不影响其他正常结果。
 - `published_date` 归一化为 **ISO-8601**：Tavily 返回的是 RFC-1123（`Thu, 20 Aug 2026 00:00:00 GMT`），而 seam 文档承诺 ISO-8601，直接透传会让按文档解析该字段的消费方失败。无法解析的值被丢弃而不是以错误格式透传。
 - `max_results` 钳制到 20（Tavily 文档上限）；最终 `maxResults` 截断仍由 seam 执行（`truncated`）。
 
 ## 模型体验
 
-经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（保留 HTTP 状态码，并附加 Tavily 错误信息）；取消以 `WEB_ABORTED` 呈现；`apiKeyEnv` 不合凭据语法时提供方对 seam 不可用（固定选择时以 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE` 呈现），其自身 `search()` 仍以 `TAVILY_INVALID_CREDENTIAL_REF` 呈现并点名该设置及其取值；非法基址或参数边界同样先表现为不可用，直接调用 `search()` 时以 `TAVILY_INVALID_CONFIG` 呈现。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
+经 `dsh-tool-web` 间接影响：模型看到经 `maxResults` 限制的 URL、标题、snippet、启用原始内容时的 summary、发布日期，以及启用 `includeAnswer` 时的生成答案。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现（保留 HTTP 状态码，并附加 Tavily 错误信息）；取消以 `WEB_ABORTED` 呈现；`apiKeyEnv` 不合凭据语法时提供方对 seam 不可用（固定选择时以 `WEB_PROVIDER_CONFIGURED_UNAVAILABLE` 呈现），其自身 `search()` 仍以 `TAVILY_INVALID_CREDENTIAL_REF` 呈现并点名该设置及其取值；非法基址或参数边界同样先表现为不可用，直接调用 `search()` 时以 `TAVILY_INVALID_CONFIG` 呈现。携带凭据的请求在接触 `Location` 目标前拒绝重定向。
 
 #### KV Cache 影响
 

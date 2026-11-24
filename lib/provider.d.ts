@@ -83,8 +83,9 @@ export interface TavilySearchProviderOptions {
 }
 /**
  * Map one Tavily result to a normalized source. Blank optional fields are
- * omitted rather than emitted empty; the snippet prefers `content` and falls
- * back to `raw_content` (present when `include_raw_content` was requested).
+ * omitted rather than emitted empty; `content` becomes the display snippet and
+ * `raw_content` (present when `include_raw_content` was requested) becomes the
+ * model-facing summary, so the tool's summary bound applies to raw page text.
  *
  * @param result - one entry of Tavily's `results[]`.
  * @returns the normalized source, or `undefined` when the entry carries no URL.
@@ -112,6 +113,11 @@ export declare function tavilyErrorDetail(body: unknown): string | undefined;
 export declare class TavilySearchProvider implements WebSearchProvider {
     private readonly resolveOptions;
     readonly id = "tavily";
+    readonly title = "Tavily";
+    readonly description: {
+        en: string;
+        zh: string;
+    };
     /**
      * @param resolveOptions - the options for the NEXT operation, snapshotted
      * once at each operation's entry so one search never mixes two sections. A

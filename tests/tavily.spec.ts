@@ -79,6 +79,7 @@ describe('Tavily result mapping', () => {
       url: 'https://a.test',
       title: 'A',
       snippet: 'snippet text',
+      summary: 'raw text',
       publishedAt: '2026-08-20T00:00:00.000Z',
     })
   })
@@ -90,9 +91,9 @@ describe('Tavily result mapping', () => {
       .toEqual({ url: 'https://a.test' })
   })
 
-  it('falls back to raw_content when content is blank', () => {
+  it('maps raw_content to summary when content is blank', () => {
     expect(mapTavilyResult({ url: 'https://a.test', content: '  ', raw_content: 'raw text' }))
-      .toEqual({ url: 'https://a.test', snippet: 'raw text' })
+      .toEqual({ url: 'https://a.test', summary: 'raw text' })
   })
 
   it('omits blank/null optional fields rather than emitting them', () => {
@@ -367,6 +368,15 @@ describe('TavilySearchProvider request mapping', () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ max_results: 2 })
   })
 
+  it.each([0, -1, 1.5, Number.NaN])('ignores a malformed request maxResults: %s', async maxResults => {
+    const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await makeProvider(makeOptions({ maxResults: 7 })).search({ query: 'q', maxResults })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toMatchObject({ max_results: 7 })
+  })
+
   it('falls back to the configured maxResults when a request omits it', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ results: [] }))
     vi.stubGlobal('fetch', fetchMock)
@@ -592,6 +602,16 @@ describe('web-search-tavily plugin registration', () => {
   it('rejects chunksPerSource outside the API bounds at schema validation', () => {
     expect(() => tavilyPlugin.Config({ chunksPerSource: 4 })).toThrow()
   })
+  it('advertises its title and localized description to provider pickers', async () => {
+    const { ctx, fiber } = await mount()
+    const info = ctx.web.listProviders().search.find(provider => provider.id === TAVILY_PROVIDER_ID)
+    expect(info).toMatchObject({
+      title: 'Tavily',
+      description: { en: expect.stringContaining('Tavily'), zh: expect.stringContaining('Tavily') },
+    })
+    await fiber.dispose()
+  })
+
   it('registers the provider into ctx.web (HMR-safe)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ results: [] })))
     const { ctx, fiber } = await mount({ apiKey: 'tavily-key' })

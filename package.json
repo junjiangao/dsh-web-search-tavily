@@ -1,6 +1,6 @@
 {
   "name": "@junjiangao/dsh-web-search-tavily",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Tavily-backed search provider for the DeepSeek Harness web capability seam (ctx.web): keyless mode, full official search parameters, and the native dsh 0.2 configuration form",
   "keywords": [
     "dsh-plugin",

@@ -187,7 +187,11 @@ describe('provider selection', () => {
       { op: 'set', path: ['searchProvider'], value: 'tavily' },
       { op: 'set', path: ['fetchProvider'], value: 'http' },
     ])
-    expect(config.scope.getSnapshot().value).toMatchObject({ previousSearchProvider: before.searchProvider, previousFetchProvider: before.fetchProvider })
+    expect(config.scope.getSnapshot().value).toMatchObject({
+      previousSearchProvider: before.searchProvider,
+      previousFetchProvider: before.fetchProvider,
+      previousSelectionRecorded: true,
+    })
     expect(controller.inject().store.getSnapshot()).toMatchObject({ enabled: true, dirty: false, failed: false })
     controller.dispose()
     controller = new TavilyCardController(config.scope, web.scope)
@@ -215,6 +219,18 @@ describe('provider selection', () => {
     await save(controller)
     expect(web.scope.getSnapshot().value).toEqual({ fetchProvider: 'http' })
     expect(web.mutate.mock.calls.at(-1)?.[0]).toEqual([{ op: 'unset', path: ['searchProvider'] }])
+    expect(controller.inject().store.getSnapshot().enabled).toBe(false)
+    controller.dispose()
+  })
+
+  it('does not restore a previous pair written without the record marker', async () => {
+    const config = scopeOf({}, true, { previousSearchProvider: 'deepseek-official', previousFetchProvider: 'http' })
+    const web = scopeOf({ fetchProvider: 'http' }, true, { searchProvider: 'tavily', fetchProvider: 'http' })
+    const controller = new TavilyCardController(config.scope, web.scope)
+    expect(controller.inject().store.getSnapshot().enabled).toBe(true)
+    controller.inject().actions.select(false)
+    await save(controller)
+    expect(web.scope.getSnapshot().value).toEqual({ fetchProvider: 'http' })
     expect(controller.inject().store.getSnapshot().enabled).toBe(false)
     controller.dispose()
   })

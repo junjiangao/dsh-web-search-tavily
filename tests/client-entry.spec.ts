@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../client-src/client.ts'
-import { TavilyCredentialStatus } from '../client-src/controls.tsx'
+import { TavilyCredentialStatus, TavilyToggleField } from '../client-src/controls.tsx'
 import { TAVILY_BUNDLE, TAVILY_ROW_ID } from '../client-src/controller.ts'
 import { NS } from '../client-src/locales.ts'
 import { SettingsSecretField } from './stubs/ui-primitives.ts'
@@ -247,6 +247,25 @@ describe('client entry surfaces', () => {
     const disclosure = elementsOf(sections[2]).find(element => element.type === 'button')
     expect(disclosure?.props['aria-expanded']).toBe(false)
     expect(disclosure?.props['aria-controls']).toBe(panels[0]?.props['id'])
+  })
+
+  it('associates a toggle hint with its switch for assistive technology', () => {
+    const field = TavilyToggleField({
+      id: 'plugin-config-tavily-example',
+      label: 'Example toggle',
+      hint: 'Why this toggle is locked',
+      overridden: false,
+      overriddenLabel: '',
+      resetLabel: '',
+      disabled: true,
+      onReset: () => {},
+      checked: false,
+      onToggle: () => {},
+    })
+    const hint = elementsOf(field).find(element => element.props['id'] === 'plugin-config-tavily-example-hint')
+    const toggle = elementsOf(field).find(element => element.props['describedBy'] !== undefined)
+    expect(hint?.props['children']).toBe('Why this toggle is locked')
+    expect(toggle?.props['describedBy']).toBe('plugin-config-tavily-example-hint')
   })
 
   it('locks a control until the companion value it needs is staged', () => {

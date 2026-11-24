@@ -70,20 +70,22 @@ export function TavilyToggleField(props: TavilyControlProps & {
   /** Stage the next draft. */
   readonly onToggle: (next: boolean) => void
 }) {
+  const hintId = props.hint === '' ? undefined : `${props.id}-hint`
   return (
     <div className={TAVILY_CLASS.field}>
       <div className={TAVILY_CLASS.toggle}>
         <div className={TAVILY_CLASS.toggleText}>
           {/* Not a `<label>`: the switch carries its own accessible name and
-              has no id to point one at. */}
+              has no id to point one at. Its hint is linked by id instead. */}
           <span className={TAVILY_CLASS.label}>{props.label}</span>
-          {props.hint === '' ? null : <p className={TAVILY_CLASS.hint}>{props.hint}</p>}
+          {hintId === undefined ? null : <p id={hintId} className={TAVILY_CLASS.hint}>{props.hint}</p>}
         </div>
         <Switch
           checked={props.checked}
           disabled={props.disabled}
           label={props.label}
           title={props.disabled ? props.hint : undefined}
+          describedBy={hintId}
           onChange={props.onToggle}
         />
       </div>

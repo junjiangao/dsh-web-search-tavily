@@ -41,6 +41,11 @@ export interface Config {
     /** 关闭 Tavily 时恢复的 provider，由配置卡片记录。 */
     previousSearchProvider: Volatile<string | undefined>;
     previousFetchProvider: Volatile<string | undefined>;
+    /**
+     * 这些前值是否由当前记录逻辑写入。旧版本也会写 previous 字段，却没有这个
+     * 标记；缺少标记时不能把它们当作可信的恢复目标。
+     */
+    previousSelectionRecorded: Volatile<boolean>;
     /** 凭据卡片写入后显式使用凭据引用，保留旧配置以便回退。 */
     useCredential: Volatile<boolean>;
     /** Literal Tavily API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
@@ -100,6 +105,7 @@ export interface Config {
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     previousSearchProvider: z<string, string, "volatile">;
     previousFetchProvider: z<string, string, "volatile">;
+    previousSelectionRecorded: z<boolean, boolean, "volatile-defined">;
     useCredential: z<boolean, boolean, "volatile-defined">;
     apiKey: z<string, string, "volatile">;
     apiKeyEnv: z<string, string, "volatile-defined">;
@@ -128,6 +134,7 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
 }>>, Schemastery.ObjectT<NoInfer<{
     previousSearchProvider: z<string, string, "volatile">;
     previousFetchProvider: z<string, string, "volatile">;
+    previousSelectionRecorded: z<boolean, boolean, "volatile-defined">;
     useCredential: z<boolean, boolean, "volatile-defined">;
     apiKey: z<string, string, "volatile">;
     apiKeyEnv: z<string, string, "volatile-defined">;

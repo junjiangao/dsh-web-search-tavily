@@ -150,13 +150,16 @@ export class TavilyCardController {
       }
     }
     const settings = this.scope.getSnapshot().value
+    // 旧版本也写 previous*，却没有标记；只恢复当前记录逻辑写入的前值，
+    // 避免把旧版硬编码的 provider 当成用户原本的显式选择。
+    const recorded = settings?.previousSelectionRecorded === true
     const target = enabled ? { searchProvider: 'tavily', fetchProvider: 'http' } : {
       searchProvider: this.previous !== undefined
         ? this.previous.searchProvider
-        : explicitString(settings?.previousSearchProvider),
+        : recorded ? explicitString(settings?.previousSearchProvider) : undefined,
       fetchProvider: this.previous !== undefined
         ? this.previous.fetchProvider
-        : explicitString(settings?.previousFetchProvider),
+        : recorded ? explicitString(settings?.previousFetchProvider) : undefined,
     }
     for (const [key, value] of Object.entries(target)) {
       if (value === undefined) this.selection.actions().resetField(key)
@@ -192,6 +195,13 @@ export class TavilyCardController {
           } else if (user?.[path] !== value) {
             ops.push({ op: 'set', path: [path], value })
           }
+        }
+        // 只有显式前值才需要标记；全 automatic 时 previous* 本身已足以表达
+        // “无需恢复”，写入标记只会产生一次无意义的配置提交。
+        const hasExplicitPrevious = this.previous.searchProvider !== undefined
+          || this.previous.fetchProvider !== undefined
+        if (hasExplicitPrevious && user?.previousSelectionRecorded !== true) {
+          ops.push({ op: 'set', path: ['previousSelectionRecorded'], value: true })
         }
         if (ops.length > 0 && !await this.scope.mutate(ops, snapshot.revision)) {
           this.failed = true
